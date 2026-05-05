@@ -5,7 +5,10 @@ import type { CommandObservation } from "../core/command-observation.ts";
 import type { CommandRun } from "../core/command-run.ts";
 import { generateRunId } from "../core/ids.ts";
 
-type RunEvidenceKind =
+// Internal filename key for the file-backed store. One logical observation
+// (EvidenceKind = "observation") is split into two files on disk, hence the
+// _json / _md suffixes. Public refs use EvidenceKind; this enum stays local.
+type RunFileKey =
 	| "stdout"
 	| "stderr"
 	| "combined"
@@ -13,7 +16,7 @@ type RunEvidenceKind =
 	| "observation_json"
 	| "observation_md";
 
-const FILENAMES: Record<RunEvidenceKind, string> = {
+const FILENAMES: Record<RunFileKey, string> = {
 	stdout: "stdout.log",
 	stderr: "stderr.log",
 	combined: "combined.log",
@@ -74,15 +77,11 @@ export class FileEvidenceStore {
 		return join(this.runsDir, runId);
 	}
 
-	readEvidence(runId: string, kind: RunEvidenceKind): string {
+	readEvidence(runId: string, kind: RunFileKey): string {
 		return readFileSync(join(this.runsDir, runId, FILENAMES[kind]), "utf8");
 	}
 
-	private writeRunFile(
-		runId: string,
-		kind: RunEvidenceKind,
-		text: string,
-	): void {
+	private writeRunFile(runId: string, kind: RunFileKey, text: string): void {
 		writeFileSync(join(this.runsDir, runId, FILENAMES[kind]), text, "utf8");
 	}
 }

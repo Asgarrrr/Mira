@@ -174,29 +174,36 @@ Core types should not depend on CLI, adapters, or storage implementation.
 
 ## Initial source structure
 
-V0:
+V0 (current):
 
 ```txt
 src/
   core/
-    evidence.ts
-    command-observation.ts
+    evidence.ts                  EvidenceKind, Evidence, EvidenceRef
+    ids.ts                       generateRunId()
+    command-run.ts               CommandRun type
+    command-observation.ts       CommandObservation + buildObservation/buildSummary
+    finding.ts                   Finding, EvidenceExcerpt (defined, not yet used)
   store/
-    evidence-store.ts
+    evidence-store.ts            FileEvidenceStore
   command/
-    command-observer.ts
-  summarizers/
-    generic-summarizer.ts
+    command-observer.ts          CommandObserver (raw shell)
   cli/
-    index.ts
-    run.ts
+    index.ts                     CLI entry, subcommand dispatch
+    run.ts                       `mira run` orchestration
+    render-observation.ts        markdown renderer for CommandObservation
 tests/
-  fixtures/
-  command-observation.test.ts
+  ids.test.ts
   evidence-store.test.ts
+  command-observer.test.ts
+  command-observation.test.ts
+  render-observation.test.ts
+  cli-run.e2e.test.ts
 ```
 
-V0.1 adds:
+The V0 summarizer is intentionally inline (`buildSummary` inside `command-observation.ts`) rather than a separate `summarizers/` module: in V0 there is one deterministic generic summarizer and no dispatch.
+
+V0.1 will add:
 
 ```txt
 src/
