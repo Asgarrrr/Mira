@@ -1,5 +1,6 @@
 import { dirname } from "node:path";
 
+import { senseArchitecture } from "../architecture/sense.ts";
 import { buildContextPack } from "../context/context-pack-generator.ts";
 import { FileEvidenceStore } from "../store/evidence-store.ts";
 import { renderContextMd } from "./render-context.ts";
@@ -17,6 +18,7 @@ export async function runContext(args: string[]): Promise<number> {
 	const store = new FileEvidenceStore(cwd);
 
 	const observations = store.listRecentObservations(MAX_OBSERVATIONS);
+	const architectureSignals = await senseArchitecture(cwd);
 	const { contextId, mdPath } = store.createContext();
 
 	const pack = buildContextPack({
@@ -24,6 +26,7 @@ export async function runContext(args: string[]): Promise<number> {
 		task,
 		createdAt: new Date().toISOString(),
 		observations,
+		architectureSignals,
 	});
 
 	store.writeContextJson(contextId, pack);

@@ -33,6 +33,11 @@ export function renderContextMd(pack: ContextPack, contextDir: string): string {
 		}
 	}
 
+	if (pack.suspectedFiles.length > 0) {
+		lines.push("", "## Suspected files", "");
+		for (const path of pack.suspectedFiles) lines.push(`- \`${path}\``);
+	}
+
 	if (pack.verificationCommands.length > 0) {
 		lines.push("", "## Verification commands", "");
 		for (const cmd of pack.verificationCommands) lines.push(`- \`${cmd}\``);
