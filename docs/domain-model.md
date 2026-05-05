@@ -1,6 +1,6 @@
 # Domain Model
 
-Types are listed in the order they appear in the V0 vertical slice, then V0.1, then post-V0. Each type exists once in this document and is labelled with the layer it belongs to.
+Types are listed in the order they appear in the V0 vertical slice, then V0.1, then V0.2, then post-V0. Each type exists once in this document and is labelled with the layer it belongs to.
 
 ## Evidence (V0)
 
@@ -136,6 +136,30 @@ type ContextPack = {
 
 V0.1 selects the **last 10** `CommandObservation`s for the current project. The "since last ContextPack" selection mode is not implemented in V0.1.
 
+V0.1 leaves `suspectedFiles` empty (ADR 0004 Tier 2). V0.2 promotes it to Tier 1: `suspectedFiles` is the ordered, deduplicated list of `ArchitectureSignal.path` values (insertion order: `changed-file` → `related-file` → `test-file` → `import-hint`; alphabetical within each kind; capped at 20). The `ContextPack` schema is unchanged. See ADR 0005.
+
+## ArchitectureSignal (V0.2)
+
+A single structural observation about the working tree, computed on demand by `mira context`. It exists to populate `ContextPack.suspectedFiles`; it is not embedded in `CommandObservation` and is not persisted as standalone evidence in V0.2.
+
+```ts
+type ArchitectureSignalKind =
+  | "changed-file"                                    // git: modified or untracked relative to HEAD (deleted excluded)
+  | "related-file"                                    // filesystem: same directory, shared basename stem
+  | "test-file"                                       // filesystem: matches *.test.ts(x) / *.spec.ts(x) for a changed file
+  | "import-hint"                                     // filesystem: textual `from "…<basename>"` reference (no AST)
+
+type ArchitectureSignal = {
+  kind: ArchitectureSignalKind
+  path: string                                        // relative to project root; must exist on disk at signal-creation time
+  reason: string                                      // deterministic short string explaining why the path was selected
+  source: "git" | "filesystem"
+  relatedTo?: string                                  // for related-file / test-file / import-hint: the changed path that triggered inclusion
+}
+```
+
+V0.2 sensing is filesystem-only: it reads `git status` / `git diff` for changed files and uses `readdir`, basename / dirname, glob, and textual grep for the rest. No AST, no TypeScript Compiler API, no semantic analysis, no new npm dependency. Full scope, exclusions, and invariants live in ADR 0005.
+
 ## ToolAdapter (post-V0)
 
 Adapters are the planned integration boundary for external tools (RTK, Sentrux, git, test runners). They are **not built in V0 or V0.1**.
@@ -159,4 +183,5 @@ type ToolAdapter<TInput> = {
 - No generated object replaces raw evidence.
 - Every `Finding` is backed by at least one `EvidenceExcerpt` or `EvidenceRef`.
 - `ContextPack` references `CommandObservation`s by id; it never embeds them.
+- Every `ArchitectureSignal` references a filesystem path that exists on disk at signal-creation time (V0.2).
 - The canonical invariant list lives in `docs/adr/0001-core-abstractions.md`.

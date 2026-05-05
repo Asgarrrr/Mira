@@ -18,6 +18,12 @@ V0.1 extension:
 recent observations -> ContextPack
 ```
 
+V0.2 extension:
+
+```txt
+working-tree state -> ArchitectureSignal[] -> ContextPack.suspectedFiles
+```
+
 ## Phase 1: Evidence Store (V0)
 
 Implement local evidence storage.
@@ -120,20 +126,48 @@ Definition of done:
 * "last 10" selection is tested with a fixture of >10 observations
 * output is snapshot-tested
 
-## Phase 5: Architecture sensing (post-V0)
+## Phase 5: Architecture sensing (V0.2)
 
 Add minimal structural awareness, as Mira's own version of the capability — not a port of Sentrux.
 
-Initial scope:
+The vertical slice:
 
-* changed files
-* suspected related files
-* test file hints
-* basic import hints later
+```txt
+working-tree state -> ArchitectureSignal[] -> ContextPack.suspectedFiles
+```
 
-Do not start with global scoring. Focus on task-aware impact.
+`ArchitectureSignal` is computed on demand inside `mira context`. It is not embedded in `CommandObservation` and is not persisted as standalone evidence in V0.2. Its only consumer in V0.2 is `ContextPack.suspectedFiles`. Full type, scope, and population policy: ADR 0005.
 
-The exact type for these signals is not committed in the V0 docs and will be defined when Phase 5 starts.
+Scope:
+
+* `changed-file` — git working-tree paths (modified or untracked) relative to `HEAD`, deleted paths excluded.
+* `related-file` — same directory, shared basename stem.
+* `test-file` — `*.test.ts`, `*.test.tsx`, `*.spec.ts`, `*.spec.tsx`, in the same directory or under a sibling `tests/`.
+* `import-hint` — textual `from "…<basename>"` grep, no AST.
+
+Out of scope (V0.2): full import graph, ownership, package boundaries, global codebase scoring, AST or TypeScript Compiler API usage, cross-language conventions beyond TS / TSX, persisting signals as standalone evidence, embedding signals in `CommandObservation`, configurable or pluggable sensors.
+
+Definition of done:
+
+* `git status` / `git diff` is the source for `changed-file`; modified and untracked are included; deleted paths are excluded.
+* `related-file`, `test-file`, and `import-hint` are derived purely from filesystem inspection (`readdir`, basename, dirname, glob, textual grep). No AST.
+* Every emitted `ArchitectureSignal` references a filesystem path that exists on disk; existence is verified before emission.
+* `ContextPack.suspectedFiles` is populated deterministically: insertion order `changed-file` → `related-file` → `test-file` → `import-hint`; alphabetical within each kind; deduplicated; capped at 20.
+* Each heuristic kind is unit-tested against a fixture working tree.
+* Integration: `mira context` against a fixture project produces a `ContextPack` whose `suspectedFiles` matches a snapshot.
+* `bun run typecheck && bun run lint && bun test` all pass.
+* No new npm dependency.
+* Sensing logic is contained in a single `src/architecture/` module — no plugin layer, no `Sensor<T>` interface.
+
+Expected files touched (impl PR):
+
+* `src/architecture/architecture-signal.ts` — `ArchitectureSignalKind`, `ArchitectureSignal` type.
+* `src/architecture/sense.ts` — composed `senseArchitecture(cwd): Promise<ArchitectureSignal[]>`. Implementation may inline or split the four heuristics; no exposed dispatch surface.
+* `src/context/context-pack-generator.ts` — extended to call `senseArchitecture` and project signals onto `suspectedFiles` (ordering, dedup, cap).
+* `tests/architecture-signal.test.ts` — unit tests per heuristic.
+* `tests/cli-context.e2e.test.ts` — extended `suspectedFiles` assertions.
+
+The "since last ContextPack" selection mode and richer graph signals remain post-V0.2.
 
 ## Phase 6: Agent Integration (post-V0)
 
