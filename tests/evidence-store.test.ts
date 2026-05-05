@@ -1,9 +1,18 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import type { CommandObservation } from "../src/core/command-observation.ts";
 import type { CommandRun } from "../src/core/command-run.ts";
+import type { ContextPack } from "../src/core/context-pack.ts";
 import { FileEvidenceStore } from "../src/store/evidence-store.ts";
 
 describe("FileEvidenceStore", () => {
@@ -102,5 +111,131 @@ describe("FileEvidenceStore", () => {
 	test("readRun on an unknown run id throws", () => {
 		const store = new FileEvidenceStore(projectRoot);
 		expect(() => store.readRun("run_nope")).toThrow();
+	});
+
+	test("listRecentObservations returns [] when .mira/runs does not exist yet", () => {
+		const store = new FileEvidenceStore(projectRoot);
+		expect(store.listRecentObservations(10)).toEqual([]);
+	});
+
+	test("listRecentObservations returns the N newest observations, newest first", () => {
+		const store = new FileEvidenceStore(projectRoot);
+		const ids = [
+			"run_20260505T143010000Z_a00001",
+			"run_20260505T143020000Z_a00002",
+			"run_20260505T143030000Z_a00003",
+			"run_20260505T143040000Z_a00004",
+			"run_20260505T143050000Z_a00005",
+			"run_20260505T143100000Z_a00006",
+			"run_20260505T143110000Z_a00007",
+			"run_20260505T143120000Z_a00008",
+			"run_20260505T143130000Z_a00009",
+			"run_20260505T143140000Z_a00010",
+			"run_20260505T143150000Z_a00011",
+		];
+
+		// Write 11 observation dirs in lexicographic order. We can't rely on
+		// FileEvidenceStore.createRun() (it generates ids), so we materialise the
+		// fixture by hand.
+		const runsRoot = join(projectRoot, ".mira", "runs");
+		for (const id of ids) {
+			const dir = join(runsRoot, id);
+			mkdirSync(dir, { recursive: true });
+			const observation: CommandObservation = {
+				id,
+				runId: id,
+				command: `echo ${id}`,
+				status: "success",
+				exitCode: 0,
+				killedByTimeout: false,
+				durationMs: 1,
+				summary: `\`echo ${id}\` exited with code 0 in 1ms`,
+				findings: [],
+				relatedFiles: [],
+				suggestedNextActions: [],
+				verificationHints: [],
+				evidenceRefs: [
+					{ path: join(dir, "stdout.log"), kind: "stdout" },
+					{ path: join(dir, "stderr.log"), kind: "stderr" },
+					{ path: join(dir, "combined.log"), kind: "combined" },
+					{ path: join(dir, "metadata.json"), kind: "metadata" },
+				],
+			};
+			writeFileSync(
+				join(dir, "observation.json"),
+				`${JSON.stringify(observation, null, 2)}\n`,
+				"utf8",
+			);
+		}
+
+		const recent = store.listRecentObservations(10);
+		expect(recent.length).toBe(10);
+		expect(recent.map((o) => o.id)).toEqual([...ids].reverse().slice(0, 10));
+	});
+
+	test("listRecentObservations skips run dirs without observation.json", () => {
+		const store = new FileEvidenceStore(projectRoot);
+		const { runId, runDir } = store.createRun(); // no observation.json written
+		const observation: CommandObservation = {
+			id: "run_zzzzzzzzzzzzzzzzzz_zzzzzz",
+			runId: "run_zzzzzzzzzzzzzzzzzz_zzzzzz",
+			command: "echo z",
+			status: "success",
+			exitCode: 0,
+			killedByTimeout: false,
+			durationMs: 1,
+			summary: "`echo z` exited with code 0 in 1ms",
+			findings: [],
+			relatedFiles: [],
+			suggestedNextActions: [],
+			verificationHints: [],
+			evidenceRefs: [],
+		};
+		// Manually create a second run dir with an observation.json
+		const runsRoot = join(projectRoot, ".mira", "runs");
+		const dir = join(runsRoot, observation.id);
+		require("node:fs").mkdirSync(dir, { recursive: true });
+		require("node:fs").writeFileSync(
+			join(dir, "observation.json"),
+			`${JSON.stringify(observation, null, 2)}\n`,
+			"utf8",
+		);
+
+		expect(existsSync(runDir)).toBe(true);
+		const recent = store.listRecentObservations(10);
+		expect(recent.map((o) => o.id)).toEqual([observation.id]);
+		expect(recent.map((o) => o.id)).not.toContain(runId);
+	});
+
+	test("createContext lazily creates .mira/context/ and writes pack files", () => {
+		const store = new FileEvidenceStore(projectRoot);
+		expect(existsSync(join(projectRoot, ".mira", "context"))).toBe(false);
+
+		const { contextId, jsonPath, mdPath } = store.createContext();
+		expect(existsSync(join(projectRoot, ".mira", "context"))).toBe(true);
+		expect(jsonPath).toBe(
+			join(projectRoot, ".mira", "context", `${contextId}.json`),
+		);
+		expect(mdPath).toBe(
+			join(projectRoot, ".mira", "context", `${contextId}.md`),
+		);
+
+		const pack: ContextPack = {
+			id: contextId,
+			task: "t",
+			createdAt: "2026-01-01T00:00:00.000Z",
+			summary: "s",
+			observationIds: [],
+			evidenceRefs: [],
+			suspectedFiles: [],
+			verificationCommands: [],
+			risks: [],
+			nextRecommendedAction: "",
+		};
+		store.writeContextJson(contextId, pack);
+		store.writeContextMarkdown(contextId, "# md\n");
+
+		expect(JSON.parse(readFileSync(jsonPath, "utf8"))).toEqual(pack);
+		expect(readFileSync(mdPath, "utf8")).toBe("# md\n");
 	});
 });
