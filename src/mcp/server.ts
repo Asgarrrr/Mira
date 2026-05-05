@@ -17,6 +17,10 @@ import {
 	runGetRawEvidenceTool,
 } from "./tools/get-raw-evidence.ts";
 import {
+	listRecentRunsInputShape,
+	runListRecentRunsTool,
+} from "./tools/list-recent-runs.ts";
+import {
 	runCommandInputShape,
 	runRunCommandTool,
 } from "./tools/run-command.ts";
@@ -124,6 +128,30 @@ export function createMiraMcpServer(): McpServer {
 					structuredContent: result as unknown as Record<string, unknown>,
 					content: [
 						{ type: "text", text: JSON.stringify(result.pack, null, 2) },
+					],
+				};
+			} catch (e) {
+				if (e instanceof McpError) return miraErrorResult(e);
+				throw e;
+			}
+		},
+	);
+
+	server.registerTool(
+		"list_recent_runs",
+		{
+			title: "List recent runs",
+			description:
+				"Return a slim projection of recent CommandObservations/CommandRuns for browsing. Default limit 10, max 50. Each row mirrors fields already present on CommandObservation/CommandRun — no new field is introduced.",
+			inputSchema: listRecentRunsInputShape,
+		},
+		async (input) => {
+			try {
+				const result = await runListRecentRunsTool(input);
+				return {
+					structuredContent: result as unknown as Record<string, unknown>,
+					content: [
+						{ type: "text", text: JSON.stringify(result.runs, null, 2) },
 					],
 				};
 			} catch (e) {
