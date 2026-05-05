@@ -1,5 +1,13 @@
 export function generateRunId(): string {
-	return `run_${compactIsoNow()}_${random6()}`;
+	return generateId("run");
+}
+
+export function generateContextId(): string {
+	return generateId("ctx");
+}
+
+function generateId(prefix: "run" | "ctx"): string {
+	return `${prefix}_${compactIsoNow()}_${random6()}`;
 }
 
 function compactIsoNow(): string {

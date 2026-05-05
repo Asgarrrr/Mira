@@ -1,9 +1,16 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	readdirSync,
+	readFileSync,
+	writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 
 import type { CommandObservation } from "../core/command-observation.ts";
 import type { CommandRun } from "../core/command-run.ts";
-import { generateRunId } from "../core/ids.ts";
+import type { ContextPack } from "../core/context-pack.ts";
+import { generateContextId, generateRunId } from "../core/ids.ts";
 
 // Internal filename key for the file-backed store. One logical observation
 // (EvidenceKind = "observation") is split into two files on disk, hence the
@@ -27,9 +34,11 @@ const FILENAMES: Record<RunFileKey, string> = {
 
 export class FileEvidenceStore {
 	private readonly runsDir: string;
+	private readonly contextDir: string;
 
 	constructor(projectRoot: string) {
 		this.runsDir = join(projectRoot, ".mira", "runs");
+		this.contextDir = join(projectRoot, ".mira", "context");
 	}
 
 	createRun(): { runId: string; runDir: string; metadataPath: string } {
@@ -79,6 +88,48 @@ export class FileEvidenceStore {
 
 	readEvidence(runId: string, kind: RunFileKey): string {
 		return readFileSync(join(this.runsDir, runId, FILENAMES[kind]), "utf8");
+	}
+
+	listRecentObservations(limit: number): CommandObservation[] {
+		if (!existsSync(this.runsDir)) return [];
+		// Walk newest-first and skip dirs that have no observation.json (e.g. a
+		// run that crashed before the observation was written). We must filter
+		// *while* iterating, not after slicing: a corrupt dir at the top of the
+		// sort would otherwise shrink the result below `limit` even when more
+		// valid observations exist behind it.
+		const observations: CommandObservation[] = [];
+		const entries = readdirSync(this.runsDir).sort().reverse();
+		for (const runId of entries) {
+			if (observations.length >= limit) break;
+			const path = join(this.runsDir, runId, FILENAMES.observation_json);
+			if (!existsSync(path)) continue;
+			observations.push(
+				JSON.parse(readFileSync(path, "utf8")) as CommandObservation,
+			);
+		}
+		return observations;
+	}
+
+	createContext(): { contextId: string; jsonPath: string; mdPath: string } {
+		mkdirSync(this.contextDir, { recursive: true });
+		const contextId = generateContextId();
+		return {
+			contextId,
+			jsonPath: join(this.contextDir, `${contextId}.json`),
+			mdPath: join(this.contextDir, `${contextId}.md`),
+		};
+	}
+
+	writeContextJson(contextId: string, pack: ContextPack): void {
+		writeFileSync(
+			join(this.contextDir, `${contextId}.json`),
+			`${JSON.stringify(pack, null, 2)}\n`,
+			"utf8",
+		);
+	}
+
+	writeContextMarkdown(contextId: string, markdown: string): void {
+		writeFileSync(join(this.contextDir, `${contextId}.md`), markdown, "utf8");
 	}
 
 	private writeRunFile(runId: string, kind: RunFileKey, text: string): void {
