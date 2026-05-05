@@ -100,6 +100,19 @@ describe("senseArchitecture / changed-file", () => {
 		expect(changed).not.toContain("src/bar.ts");
 	});
 
+	test("returns repo-root-relative paths when invoked from a subdirectory", async () => {
+		gitInit(cwd);
+		writeFile(cwd, "src/utils/foo.ts", "export const x = 1;\n");
+		gitCommitAll(cwd, "init");
+		writeFile(cwd, "src/utils/foo.ts", "export const x = 2;\n");
+
+		// Invoking `mira context` from a subdirectory must still yield correct
+		// signals; git porcelain reports paths from the repo root, not from cwd.
+		const subdir = join(cwd, "src", "utils");
+		const signals = await senseArchitecture(subdir);
+		expect(pathsByKind(signals, "changed-file")).toEqual(["src/utils/foo.ts"]);
+	});
+
 	test("emits one changed-file signal per existing modified path with source 'git'", async () => {
 		gitInit(cwd);
 		writeFile(cwd, "src/a.ts", "export const a = 1;\n");

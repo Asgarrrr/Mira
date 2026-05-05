@@ -15,10 +15,17 @@ const TEST_SUFFIXES = [
 export async function senseArchitecture(
 	cwd: string,
 ): Promise<ArchitectureSignal[]> {
+	// `git status --porcelain` reports paths relative to the repo root, not to
+	// `cwd`. Resolve the toplevel once so existsSync checks line up when
+	// `mira context` is invoked from a subdirectory; signal paths stay
+	// repo-root-relative, matching the "relative to project root" contract.
+	const root = resolveGitRoot(cwd);
+	if (!root) return [];
+
 	const signals: ArchitectureSignal[] = [];
 
-	const changedRel = listChangedFiles(cwd).filter((rel) =>
-		existsSync(join(cwd, rel)),
+	const changedRel = listChangedFiles(root).filter((rel) =>
+		existsSync(join(root, rel)),
 	);
 	const changedSet = new Set(changedRel);
 
@@ -32,21 +39,36 @@ export async function senseArchitecture(
 	}
 
 	for (const rel of changedRel) {
-		for (const signal of relatedFileSignals(cwd, rel)) signals.push(signal);
+		for (const signal of relatedFileSignals(root, rel)) signals.push(signal);
 	}
 
 	for (const rel of changedRel) {
-		for (const signal of testFileSignals(cwd, rel)) signals.push(signal);
+		for (const signal of testFileSignals(root, rel)) signals.push(signal);
 	}
 
-	const sourceFiles = listSourceFiles(cwd);
+	const sourceFiles = listSourceFiles(root);
 	for (const rel of changedRel) {
-		for (const signal of importHintSignals(cwd, rel, sourceFiles, changedSet)) {
+		for (const signal of importHintSignals(
+			root,
+			rel,
+			sourceFiles,
+			changedSet,
+		)) {
 			signals.push(signal);
 		}
 	}
 
 	return signals;
+}
+
+function resolveGitRoot(cwd: string): string | null {
+	const r = spawnSync("git", ["rev-parse", "--show-toplevel"], {
+		cwd,
+		encoding: "utf8",
+	});
+	if (r.status !== 0) return null;
+	const out = r.stdout.trim();
+	return out.length > 0 ? out : null;
 }
 
 function relatedFileSignals(cwd: string, rel: string): ArchitectureSignal[] {
