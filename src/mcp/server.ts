@@ -1,6 +1,11 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
+import {
+	runCommandInputShape,
+	runRunCommandTool,
+} from "./tools/run-command.ts";
+
 // V0.3 boundary: a single MCP server that re-exposes the existing kernels.
 // `@modelcontextprotocol/sdk` is consumed only inside `src/mcp/`. The five
 // tools registered here are hard-coded — clients cannot register new ones.
@@ -11,7 +16,24 @@ export function createMiraMcpServer(): McpServer {
 		version: "0.3.0",
 	});
 
-	// Tools are registered in subsequent commits.
+	server.registerTool(
+		"run_command",
+		{
+			title: "Run a command",
+			description:
+				"Execute a shell command in the given project root, capture evidence, and return the resulting CommandObservation. Process-level outcomes (non-zero exit, signal, timeout) are returned via the observation's fields, never via MCP errors.",
+			inputSchema: runCommandInputShape,
+		},
+		async (input) => {
+			const result = await runRunCommandTool(input);
+			return {
+				structuredContent: result as unknown as Record<string, unknown>,
+				content: [
+					{ type: "text", text: JSON.stringify(result.observation, null, 2) },
+				],
+			};
+		},
+	);
 
 	return server;
 }
