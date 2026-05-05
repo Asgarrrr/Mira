@@ -1,11 +1,14 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { spawnSync } from "node:child_process";
 import {
 	existsSync,
+	mkdirSync,
 	mkdtempSync,
 	readdirSync,
 	readFileSync,
 	realpathSync,
 	rmSync,
+	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -28,6 +31,36 @@ async function runMira(args: string[], cwd: string) {
 		proc.exited,
 	]);
 	return { stdout, stderr, exitCode };
+}
+
+function gitInit(cwd: string): void {
+	const init = spawnSync("git", ["init", "-q", "-b", "main"], { cwd });
+	if (init.status !== 0) throw new Error("git init failed");
+	spawnSync("git", ["config", "user.email", "test@example.com"], { cwd });
+	spawnSync("git", ["config", "user.name", "Test"], { cwd });
+	spawnSync("git", ["config", "commit.gpgsign", "false"], { cwd });
+}
+
+function gitCommitAll(cwd: string, msg: string): void {
+	if (spawnSync("git", ["add", "-A"], { cwd }).status !== 0)
+		throw new Error("git add failed");
+	if (spawnSync("git", ["commit", "-q", "-m", msg], { cwd }).status !== 0)
+		throw new Error("git commit failed");
+}
+
+function writeFile(cwd: string, rel: string, content: string): void {
+	const full = join(cwd, rel);
+	mkdirSync(dirname(full), { recursive: true });
+	writeFileSync(full, content, "utf8");
+}
+
+function readPack(cwd: string): ContextPack {
+	const ctxRoot = join(cwd, ".mira", "context");
+	const jsonName = readdirSync(ctxRoot).find((f) => f.endsWith(".json"));
+	if (!jsonName) throw new Error("no context json found");
+	return JSON.parse(
+		readFileSync(join(ctxRoot, jsonName), "utf8"),
+	) as ContextPack;
 }
 
 describe("mira context (E2E)", () => {
@@ -159,5 +192,67 @@ describe("mira context (E2E)", () => {
 		// deduped by exact string.
 		expect(pack.verificationCommands).toEqual(["echo a", "echo b"]);
 		expect(pack.summary).toContain("(3 succeeded, 1 failed)");
+	});
+
+	test("populates suspectedFiles from working-tree state (changed-file + sibling test)", async () => {
+		gitInit(cwd);
+		writeFile(cwd, "src/foo.ts", "export const x = 1;\n");
+		writeFile(cwd, "src/foo.test.ts", "// test\n");
+		gitCommitAll(cwd, "init");
+		// Touch the source file so it shows up as modified.
+		writeFile(cwd, "src/foo.ts", "export const x = 2;\n");
+
+		const { exitCode } = await runMira(["context", "investigate foo"], cwd);
+		expect(exitCode).toBe(0);
+
+		const pack = readPack(cwd);
+		// kind order: changed-file → related-file → test-file → import-hint;
+		// alpha within each kind; deduped across kinds. foo.test.ts shares the
+		// stem with foo.ts so it lands under related-file (earliest position).
+		expect(pack.suspectedFiles).toEqual(["src/foo.ts", "src/foo.test.ts"]);
+
+		// Markdown surfaces the section when populated.
+		const ctxRoot = join(cwd, ".mira", "context");
+		const mdName = readdirSync(ctxRoot).find((f) =>
+			f.endsWith(".md"),
+		) as string;
+		const md = readFileSync(join(ctxRoot, mdName), "utf8");
+		expect(md).toContain("## Suspected files");
+		expect(md).toContain("- `src/foo.ts`");
+		expect(md).toContain("- `src/foo.test.ts`");
+	});
+
+	test("suspectedFiles is [] when the working tree is clean", async () => {
+		gitInit(cwd);
+		writeFile(cwd, "src/foo.ts", "export const x = 1;\n");
+		gitCommitAll(cwd, "init");
+
+		const { exitCode } = await runMira(["context", "clean tree"], cwd);
+		expect(exitCode).toBe(0);
+
+		const pack = readPack(cwd);
+		expect(pack.suspectedFiles).toEqual([]);
+	});
+
+	test("respects the cap of 20 suspectedFiles when many files change", async () => {
+		gitInit(cwd);
+		// Seed an initial commit so subsequent files become "modified" not
+		// untracked-via-empty-repo (both work, but this is more realistic).
+		writeFile(cwd, "README.md", "# repo\n");
+		gitCommitAll(cwd, "init");
+
+		// Create 25 untracked files; all will be reported as changed-file.
+		for (let i = 0; i < 25; i++) {
+			writeFile(cwd, `src/file${String(i).padStart(2, "0")}.ts`, "x\n");
+		}
+
+		const { exitCode } = await runMira(["context", "many changes"], cwd);
+		expect(exitCode).toBe(0);
+
+		const pack = readPack(cwd);
+		expect(pack.suspectedFiles.length).toBe(20);
+		// Byte-wise alpha within changed-file kind ⇒ first 20 are file00..file19.
+		expect(pack.suspectedFiles[0]).toBe("src/file00.ts");
+		expect(pack.suspectedFiles[19]).toBe("src/file19.ts");
 	});
 });
