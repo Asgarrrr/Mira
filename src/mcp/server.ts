@@ -6,6 +6,11 @@ import {
 	runGetObservationTool,
 } from "./tools/get-observation.ts";
 import {
+	type GetRawEvidenceInput,
+	getRawEvidenceInputShape,
+	runGetRawEvidenceTool,
+} from "./tools/get-raw-evidence.ts";
+import {
 	runCommandInputShape,
 	runRunCommandTool,
 } from "./tools/run-command.ts";
@@ -54,6 +59,23 @@ export function createMiraMcpServer(): McpServer {
 				content: [
 					{ type: "text", text: JSON.stringify(result.observation, null, 2) },
 				],
+			};
+		},
+	);
+
+	server.registerTool(
+		"get_raw_evidence",
+		{
+			title: "Get raw evidence by reference",
+			description:
+				"Read the raw bytes of a stored evidence file referenced by an existing EvidenceRef. ref.path is resolved against <projectRoot>/.mira/; traversal, out-of-tree absolute paths, and symlinks that escape the evidence root are rejected before any read. Returned verbatim — never truncated, summarized, or re-encoded.",
+			inputSchema: getRawEvidenceInputShape,
+		},
+		async (input) => {
+			const result = await runGetRawEvidenceTool(input as GetRawEvidenceInput);
+			return {
+				structuredContent: result as unknown as Record<string, unknown>,
+				content: [{ type: "text", text: result.content }],
 			};
 		},
 	);
