@@ -2,6 +2,9 @@
 	"name": "mira",
 	"type": "module",
 	"private": true,
+	"bin": {
+		"mira": "./src/cli/index.ts"
+	},
 	"scripts": {
 		"test": "bun test",
 		"typecheck": "tsc --noEmit",
