@@ -57,6 +57,7 @@ type CommandRun = {
   stdoutPath: string
   stderrPath: string
   combinedPath: string
+  metadataPath: string                                // file the rest of CommandRun is serialized into
 }
 ```
 

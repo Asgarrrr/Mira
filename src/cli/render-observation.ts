@@ -28,6 +28,7 @@ export function renderObservationMd(
 	lines.push(
 		`- **Duration:** ${observation.durationMs}ms`,
 		`- **Started at:** ${run.startedAt}`,
+		`- **Cwd:** \`${run.cwd}\``,
 		"",
 		"## Summary",
 		"",
