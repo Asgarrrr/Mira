@@ -2,6 +2,10 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
 import {
+	getObservationInputShape,
+	runGetObservationTool,
+} from "./tools/get-observation.ts";
+import {
 	runCommandInputShape,
 	runRunCommandTool,
 } from "./tools/run-command.ts";
@@ -26,6 +30,25 @@ export function createMiraMcpServer(): McpServer {
 		},
 		async (input) => {
 			const result = await runRunCommandTool(input);
+			return {
+				structuredContent: result as unknown as Record<string, unknown>,
+				content: [
+					{ type: "text", text: JSON.stringify(result.observation, null, 2) },
+				],
+			};
+		},
+	);
+
+	server.registerTool(
+		"get_observation",
+		{
+			title: "Get an observation by id",
+			description:
+				"Load the persisted CommandObservation for an observationId from the given project root's .mira/runs/<id>/observation.json. Returned verbatim; never includes ArchitectureSignal[].",
+			inputSchema: getObservationInputShape,
+		},
+		async (input) => {
+			const result = await runGetObservationTool(input);
 			return {
 				structuredContent: result as unknown as Record<string, unknown>,
 				content: [
