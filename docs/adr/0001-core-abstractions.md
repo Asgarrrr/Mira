@@ -72,6 +72,7 @@ Future implementations may include:
 - sandboxed observer
 - fixture observer
 - remote observer
+- hook observer — receives `{cmd, stdout, stderr, exitCode, durationMs}` from an agent hook (Claude Code PreToolUse/PostToolUse, Codex, etc.) instead of spawning the process itself. Trades the wrapper's enforced timeout for zero-friction integration with agents that already run commands through their own Bash tool.
 
 The rest of Mira should not care which observer is used.
 
