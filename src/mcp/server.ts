@@ -1,6 +1,12 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { McpError } from "@modelcontextprotocol/sdk/types.js";
 
+import { miraErrorResult } from "./errors.ts";
+import {
+	generateContextPackInputShape,
+	runGenerateContextPackTool,
+} from "./tools/generate-context-pack.ts";
 import {
 	getObservationInputShape,
 	runGetObservationTool,
@@ -34,13 +40,21 @@ export function createMiraMcpServer(): McpServer {
 			inputSchema: runCommandInputShape,
 		},
 		async (input) => {
-			const result = await runRunCommandTool(input);
-			return {
-				structuredContent: result as unknown as Record<string, unknown>,
-				content: [
-					{ type: "text", text: JSON.stringify(result.observation, null, 2) },
-				],
-			};
+			try {
+				const result = await runRunCommandTool(input);
+				return {
+					structuredContent: result as unknown as Record<string, unknown>,
+					content: [
+						{
+							type: "text",
+							text: JSON.stringify(result.observation, null, 2),
+						},
+					],
+				};
+			} catch (e) {
+				if (e instanceof McpError) return miraErrorResult(e);
+				throw e;
+			}
 		},
 	);
 
@@ -53,13 +67,21 @@ export function createMiraMcpServer(): McpServer {
 			inputSchema: getObservationInputShape,
 		},
 		async (input) => {
-			const result = await runGetObservationTool(input);
-			return {
-				structuredContent: result as unknown as Record<string, unknown>,
-				content: [
-					{ type: "text", text: JSON.stringify(result.observation, null, 2) },
-				],
-			};
+			try {
+				const result = await runGetObservationTool(input);
+				return {
+					structuredContent: result as unknown as Record<string, unknown>,
+					content: [
+						{
+							type: "text",
+							text: JSON.stringify(result.observation, null, 2),
+						},
+					],
+				};
+			} catch (e) {
+				if (e instanceof McpError) return miraErrorResult(e);
+				throw e;
+			}
 		},
 	);
 
@@ -72,11 +94,42 @@ export function createMiraMcpServer(): McpServer {
 			inputSchema: getRawEvidenceInputShape,
 		},
 		async (input) => {
-			const result = await runGetRawEvidenceTool(input as GetRawEvidenceInput);
-			return {
-				structuredContent: result as unknown as Record<string, unknown>,
-				content: [{ type: "text", text: result.content }],
-			};
+			try {
+				const result = await runGetRawEvidenceTool(
+					input as GetRawEvidenceInput,
+				);
+				return {
+					structuredContent: result as unknown as Record<string, unknown>,
+					content: [{ type: "text", text: result.content }],
+				};
+			} catch (e) {
+				if (e instanceof McpError) return miraErrorResult(e);
+				throw e;
+			}
+		},
+	);
+
+	server.registerTool(
+		"generate_context_pack",
+		{
+			title: "Generate a context pack",
+			description:
+				"Build a ContextPack for a free-text task: last-10 observations from the project's .mira/, architecture sensing applied (V0.2), suspectedFiles capped at 20 by the Context Kernel. Persists .mira/context/<id>.{json,md} and returns the pack verbatim.",
+			inputSchema: generateContextPackInputShape,
+		},
+		async (input) => {
+			try {
+				const result = await runGenerateContextPackTool(input);
+				return {
+					structuredContent: result as unknown as Record<string, unknown>,
+					content: [
+						{ type: "text", text: JSON.stringify(result.pack, null, 2) },
+					],
+				};
+			} catch (e) {
+				if (e instanceof McpError) return miraErrorResult(e);
+				throw e;
+			}
 		},
 	);
 
