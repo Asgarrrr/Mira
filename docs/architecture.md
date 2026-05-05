@@ -22,7 +22,13 @@ V0.2 adds:
 Architecture Kernel
 ```
 
-Each kernel produces or consumes evidence.
+V0.3 adds:
+
+```txt
+MCP Boundary (not a kernel)
+```
+
+Each kernel produces or consumes evidence. The MCP Boundary produces nothing; it re-exposes the existing kernels to MCP-compatible agents (Claude Code, Cursor, Goose, …) over stdio.
 
 The core rule is:
 
@@ -82,6 +88,21 @@ ArchitectureSignal[] (changed / related / test / import-hint)
     |
     v
 ContextPack.suspectedFiles (deterministic projection)
+```
+
+V0.3 boundary (alternate entry point, same kernels):
+
+```txt
+MCP client (Claude Code / Cursor / Goose / …)
+    |
+    v   stdio (JSON-RPC)
+MCP Boundary (src/mcp/)
+    |
+    v
+existing kernels (Evidence / Command / Context / Architecture)
+    |
+    v
+CommandObservation / ContextPack / EvidenceRef (returned verbatim)
 ```
 
 ## Evidence Kernel
@@ -202,19 +223,47 @@ Non-responsibilities:
 
 Full type, scope, and population policy: ADR 0005.
 
+## MCP Boundary (V0.3)
+
+The MCP Boundary is **not a kernel**. It is a single boundary file that re-exposes the existing kernels to MCP-compatible agents over stdio.
+
+Responsibilities:
+
+* speak the Model Context Protocol over stdio using `@modelcontextprotocol/sdk`
+* register exactly five tools: `run_command`, `get_observation`, `get_raw_evidence`, `generate_context_pack`, `list_recent_runs`
+* validate tool inputs (notably: every tool takes an explicit absolute `projectRoot`; the server never reads `process.cwd()` to resolve a project)
+* call the matching kernel and return the existing core type (`CommandObservation`, `ContextPack`, `EvidenceRef`) verbatim
+* report protocol-level failures via the SDK's `McpError` envelope (`INVALID_INPUT`, `NOT_FOUND`, `PATH_OUTSIDE_EVIDENCE`, `INTERNAL`)
+
+Non-responsibilities:
+
+* no new kernel, no new core type, no new persisted artifact
+* no re-encoding, truncation, or summarization of `CommandObservation` or raw evidence
+* no re-pagination or extension of `ContextPack.suspectedFiles` (the cap of 20 is enforced by the Context Kernel; ADR 0005)
+* no exposure of `ArchitectureSignal[]` outside the `generate_context_pack` pack projection
+* no plugin layer — clients cannot register new tools; the five tools are hard-coded
+* no transport other than stdio in V0.3; HTTP, SSE, WebSocket, auth, and multi-project sessions are post-V0.3
+* no streaming; results are returned once the underlying kernel completes
+* no Claude-Code-specific, Codex-specific, Cursor-specific, or Goose-specific surface; the boundary is the protocol, not an agent
+
+Process-level command outcomes (non-zero exit, signal, timeout) are returned via `CommandObservation` fields, never via MCP errors. The boundary preserves exit codes by definition.
+
+Full type, transport, SDK choice, tool contracts, and out-of-scope list: ADR 0006.
+
 ## Dependency direction
 
 Preferred dependency direction:
 
 ```txt
 cli -> kernels -> core types
+mcp -> kernels -> core types
 adapters -> core types
 summarizers -> core types
 store -> core types
 architecture -> core types
 ```
 
-Core types should not depend on CLI, adapters, storage implementation, or the architecture kernel. The architecture kernel depends on core types only — never the inverse.
+Core types should not depend on CLI, adapters, storage implementation, the architecture kernel, or the MCP boundary. The architecture kernel depends on core types only — never the inverse. The MCP boundary depends on kernels and core types only — never the inverse, and it does not import other boundaries (no `mcp -> cli`, no `cli -> mcp`).
 
 ## Initial source structure
 
@@ -274,6 +323,19 @@ tests/
 
 `src/architecture/` is the single home for sensing logic. The four heuristics (`changed-file`, `related-file`, `test-file`, `import-hint`) may be inlined or split into local helpers inside `sense.ts`; no exposed dispatch surface, no `Sensor<T>` interface. `src/context/context-pack-generator.ts` is extended (not replaced) to call `senseArchitecture` and project signals onto `ContextPack.suspectedFiles`.
 
+V0.3 will add:
+
+```txt
+src/
+  mcp/
+    server.ts                     MCP server bootstrap, stdio transport, tool registration
+    tools/                        one file per tool (may be inlined into server.ts if smaller)
+tests/
+  mcp-tools.test.ts
+```
+
+`src/mcp/` is the single home for the boundary. `@modelcontextprotocol/sdk` is consumed there and nowhere else. The five tool handlers may be inlined into `server.ts` if that stays smaller than splitting them; the contract is the tool list and the per-tool input/output/error specs in ADR 0006, not the file split.
+
 Interface/implementation splits, multiple observers, and command-specific summarizers are deferred until they are justified by an actual need.
 
 ## Design constraints
@@ -303,7 +365,7 @@ A feature is not complete unless:
 
 ## Post-V0 layers
 
-These layers are not part of V0, V0.1, or V0.2 but are sketched here so the kernel boundaries stay clean as Mira grows.
+These layers are not part of V0, V0.1, V0.2, or V0.3 but are sketched here so the kernel and boundary surfaces stay clean as Mira grows.
 
 ### Adapter layer (post-V0)
 
@@ -311,8 +373,12 @@ These layers are not part of V0, V0.1, or V0.2 but are sketched here so the kern
 
 Adapters are not built in V0; they appear when the first real external integration ships, not preemptively.
 
-MCP is not an adapter. It is the protocol Mira will use to expose its evidence model to coding agents (see `docs/workflow.md` Phase 6).
+MCP is not an adapter. MCP is the V0.3 boundary — see § MCP Boundary (V0.3) above and ADR 0006.
 
 ### Richer architecture sensing (post-V0.2)
 
 V0.2 ships a single `src/architecture/` module with four filesystem-only heuristics (see the Architecture Kernel section above and ADR 0005). Transitive import graphs, module ownership, package boundaries, AST-level analysis, and cross-language conventions remain explicitly out of scope for V0.2 and are deferred to a later phase.
+
+### Richer MCP surface (post-V0.3)
+
+V0.3 ships a single stdio transport, five hard-coded tools, and no auth. Remote transports (HTTP, SSE, WebSocket), authentication, multi-project sessions in a single server process, streaming, agent-specific bundles (Claude Code subagents, Codex awareness docs, Cursor/Goose rules), and additional tools all remain explicitly out of scope for V0.3 and are deferred to a later phase. Each will require its own ADR.
