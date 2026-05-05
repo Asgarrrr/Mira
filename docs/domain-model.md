@@ -51,14 +51,16 @@ type CommandRun = {
   cwd: string
   startedAt: string                                   // ISO 8601 UTC
   durationMs: number
-  exitCode: number
+  exitCode: number | null                             // null when the process was killed by signal
+  signal?: string                                     // signal name, e.g. "SIGKILL", when the process was killed
+  killedByTimeout: boolean                            // true when Mira's timeout enforcer killed the process
   stdoutPath: string
   stderrPath: string
   combinedPath: string
 }
 ```
 
-When a run hits the default 300-second timeout, the process is killed; the exit code reflects the kill (typically 124 or 137 depending on the shell), and `durationMs` is approximately the timeout. V0 does not model the timeout with a dedicated field.
+A `CommandRun` keeps signal-level facts at the source. When Mira's timeout enforcer kills the process, `killedByTimeout` is `true`, `signal` is `"SIGKILL"`, and `exitCode` is `null`. When an external signal terminates the process, `signal` is set and `exitCode` is `null`, but `killedByTimeout` is `false`. When the process exits cleanly, `exitCode` is the integer status and `signal` is absent. This lets the Phase 3 summarizer read structured fields instead of inferring intent from shell-conventional codes (137, 124).
 
 ## CommandObservation (V0)
 
@@ -70,7 +72,9 @@ type CommandObservation = {
   runId: string
   command: string
   status: "success" | "failure"
-  exitCode: number
+  exitCode: number | null                             // mirrors CommandRun.exitCode
+  signal?: string                                     // mirrors CommandRun.signal
+  killedByTimeout: boolean                            // mirrors CommandRun.killedByTimeout
   durationMs: number
   summary: string
   findings: Finding[]
