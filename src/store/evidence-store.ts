@@ -92,9 +92,15 @@ export class FileEvidenceStore {
 
 	listRecentObservations(limit: number): CommandObservation[] {
 		if (!existsSync(this.runsDir)) return [];
-		const entries = readdirSync(this.runsDir).sort().reverse().slice(0, limit);
+		// Walk newest-first and skip dirs that have no observation.json (e.g. a
+		// run that crashed before the observation was written). We must filter
+		// *while* iterating, not after slicing: a corrupt dir at the top of the
+		// sort would otherwise shrink the result below `limit` even when more
+		// valid observations exist behind it.
 		const observations: CommandObservation[] = [];
+		const entries = readdirSync(this.runsDir).sort().reverse();
 		for (const runId of entries) {
+			if (observations.length >= limit) break;
 			const path = join(this.runsDir, runId, FILENAMES.observation_json);
 			if (!existsSync(path)) continue;
 			observations.push(

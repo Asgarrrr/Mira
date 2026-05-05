@@ -194,8 +194,8 @@ describe("FileEvidenceStore", () => {
 		// Manually create a second run dir with an observation.json
 		const runsRoot = join(projectRoot, ".mira", "runs");
 		const dir = join(runsRoot, observation.id);
-		require("node:fs").mkdirSync(dir, { recursive: true });
-		require("node:fs").writeFileSync(
+		mkdirSync(dir, { recursive: true });
+		writeFileSync(
 			join(dir, "observation.json"),
 			`${JSON.stringify(observation, null, 2)}\n`,
 			"utf8",
@@ -205,6 +205,57 @@ describe("FileEvidenceStore", () => {
 		const recent = store.listRecentObservations(10);
 		expect(recent.map((o) => o.id)).toEqual([observation.id]);
 		expect(recent.map((o) => o.id)).not.toContain(runId);
+	});
+
+	test("listRecentObservations keeps scanning past corrupt dirs to fill the limit", () => {
+		// Regression: a corrupt run dir at the top of the sort must not shrink the
+		// result below `limit` when more valid observations exist behind it.
+		const store = new FileEvidenceStore(projectRoot);
+		const runsRoot = join(projectRoot, ".mira", "runs");
+
+		// Newest entry, lexicographically: corrupt (no observation.json).
+		mkdirSync(join(runsRoot, "run_20260505T999999999Z_corrupt"), {
+			recursive: true,
+		});
+
+		const validIds = Array.from(
+			{ length: 11 },
+			(_, i) =>
+				`run_20260505T1430${String(i).padStart(2, "0")}000Z_v${String(i).padStart(5, "0")}`,
+		);
+		for (const id of validIds) {
+			const dir = join(runsRoot, id);
+			mkdirSync(dir, { recursive: true });
+			const observation: CommandObservation = {
+				id,
+				runId: id,
+				command: `echo ${id}`,
+				status: "success",
+				exitCode: 0,
+				killedByTimeout: false,
+				durationMs: 1,
+				summary: `\`echo ${id}\` exited with code 0 in 1ms`,
+				findings: [],
+				relatedFiles: [],
+				suggestedNextActions: [],
+				verificationHints: [],
+				evidenceRefs: [{ path: join(dir, "metadata.json"), kind: "metadata" }],
+			};
+			writeFileSync(
+				join(dir, "observation.json"),
+				`${JSON.stringify(observation, null, 2)}\n`,
+				"utf8",
+			);
+		}
+
+		const recent = store.listRecentObservations(10);
+		expect(recent.length).toBe(10);
+		expect(recent.map((o) => o.id)).toEqual(
+			[...validIds].reverse().slice(0, 10),
+		);
+		expect(recent.map((o) => o.id)).not.toContain(
+			"run_20260505T999999999Z_corrupt",
+		);
 	});
 
 	test("createContext lazily creates .mira/context/ and writes pack files", () => {
