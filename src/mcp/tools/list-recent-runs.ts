@@ -18,6 +18,8 @@ export const listRecentRunsInputShape = {
 	limit: z
 		.number()
 		.int()
+		.min(1)
+		.max(MAX_LIMIT)
 		.optional()
 		.describe(
 			`Maximum number of runs to return. Default ${DEFAULT_LIMIT}, max ${MAX_LIMIT}.`,

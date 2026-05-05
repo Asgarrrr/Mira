@@ -35,6 +35,11 @@ async function main(): Promise<void> {
 				process.stderr.write("usage: mira mcp\n");
 				process.exit(2);
 			}
+			// `runStdioServer` resolves once the transport is wired up — it does
+			// NOT block until shutdown. We deliberately do not call
+			// `process.exit` here: the open stdin handle keeps the event loop
+			// alive, the SDK shuts down when stdin closes, and the process
+			// exits naturally with the right status.
 			await runStdioServer();
 			return;
 		}

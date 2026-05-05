@@ -1,6 +1,9 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { McpError } from "@modelcontextprotocol/sdk/types.js";
+import {
+	type CallToolResult,
+	McpError,
+} from "@modelcontextprotocol/sdk/types.js";
 
 import { miraErrorResult } from "./errors.ts";
 import {
@@ -12,7 +15,6 @@ import {
 	runGetObservationTool,
 } from "./tools/get-observation.ts";
 import {
-	type GetRawEvidenceInput,
 	getRawEvidenceInputShape,
 	runGetRawEvidenceTool,
 } from "./tools/get-raw-evidence.ts";
@@ -44,21 +46,15 @@ export function createMiraMcpServer(): McpServer {
 			inputSchema: runCommandInputShape,
 		},
 		async (input) => {
-			try {
-				const result = await runRunCommandTool(input);
+			return guardHandler(async () => {
+				const { observation } = await runRunCommandTool(input);
 				return {
-					structuredContent: result as unknown as Record<string, unknown>,
+					structuredContent: { observation },
 					content: [
-						{
-							type: "text",
-							text: JSON.stringify(result.observation, null, 2),
-						},
+						{ type: "text", text: JSON.stringify(observation, null, 2) },
 					],
 				};
-			} catch (e) {
-				if (e instanceof McpError) return miraErrorResult(e);
-				throw e;
-			}
+			});
 		},
 	);
 
@@ -71,21 +67,15 @@ export function createMiraMcpServer(): McpServer {
 			inputSchema: getObservationInputShape,
 		},
 		async (input) => {
-			try {
-				const result = await runGetObservationTool(input);
+			return guardHandler(async () => {
+				const { observation } = await runGetObservationTool(input);
 				return {
-					structuredContent: result as unknown as Record<string, unknown>,
+					structuredContent: { observation },
 					content: [
-						{
-							type: "text",
-							text: JSON.stringify(result.observation, null, 2),
-						},
+						{ type: "text", text: JSON.stringify(observation, null, 2) },
 					],
 				};
-			} catch (e) {
-				if (e instanceof McpError) return miraErrorResult(e);
-				throw e;
-			}
+			});
 		},
 	);
 
@@ -98,18 +88,13 @@ export function createMiraMcpServer(): McpServer {
 			inputSchema: getRawEvidenceInputShape,
 		},
 		async (input) => {
-			try {
-				const result = await runGetRawEvidenceTool(
-					input as GetRawEvidenceInput,
-				);
+			return guardHandler(async () => {
+				const { ref, bytes, content } = await runGetRawEvidenceTool(input);
 				return {
-					structuredContent: result as unknown as Record<string, unknown>,
-					content: [{ type: "text", text: result.content }],
+					structuredContent: { ref, bytes, content },
+					content: [{ type: "text", text: content }],
 				};
-			} catch (e) {
-				if (e instanceof McpError) return miraErrorResult(e);
-				throw e;
-			}
+			});
 		},
 	);
 
@@ -122,18 +107,13 @@ export function createMiraMcpServer(): McpServer {
 			inputSchema: generateContextPackInputShape,
 		},
 		async (input) => {
-			try {
-				const result = await runGenerateContextPackTool(input);
+			return guardHandler(async () => {
+				const { pack } = await runGenerateContextPackTool(input);
 				return {
-					structuredContent: result as unknown as Record<string, unknown>,
-					content: [
-						{ type: "text", text: JSON.stringify(result.pack, null, 2) },
-					],
+					structuredContent: { pack },
+					content: [{ type: "text", text: JSON.stringify(pack, null, 2) }],
 				};
-			} catch (e) {
-				if (e instanceof McpError) return miraErrorResult(e);
-				throw e;
-			}
+			});
 		},
 	);
 
@@ -146,22 +126,33 @@ export function createMiraMcpServer(): McpServer {
 			inputSchema: listRecentRunsInputShape,
 		},
 		async (input) => {
-			try {
-				const result = await runListRecentRunsTool(input);
+			return guardHandler(async () => {
+				const { runs } = await runListRecentRunsTool(input);
 				return {
-					structuredContent: result as unknown as Record<string, unknown>,
-					content: [
-						{ type: "text", text: JSON.stringify(result.runs, null, 2) },
-					],
+					structuredContent: { runs },
+					content: [{ type: "text", text: JSON.stringify(runs, null, 2) }],
 				};
-			} catch (e) {
-				if (e instanceof McpError) return miraErrorResult(e);
-				throw e;
-			}
+			});
 		},
 	);
 
 	return server;
+}
+
+// Thrown McpError → structured `isError: true` CallToolResult that preserves
+// the Mira code on the wire. The high-level McpServer would otherwise drop
+// `data.code` (see comment on miraErrorResult). Non-McpError throws are
+// re-raised so they remain genuine bugs rather than masquerading as tool
+// errors with empty Mira codes.
+async function guardHandler(
+	body: () => Promise<CallToolResult>,
+): Promise<CallToolResult> {
+	try {
+		return await body();
+	} catch (e) {
+		if (e instanceof McpError) return miraErrorResult(e);
+		throw e;
+	}
 }
 
 export async function runStdioServer(): Promise<void> {

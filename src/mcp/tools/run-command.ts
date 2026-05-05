@@ -54,11 +54,19 @@ export async function runRunCommandTool(
 	}
 
 	const observation = buildObservation(result.run);
-	store.writeObservationJson(result.run.id, observation);
-	store.writeObservationMarkdown(
-		result.run.id,
-		renderObservationMd(observation, result.run),
-	);
+	try {
+		store.writeObservationJson(result.run.id, observation);
+		store.writeObservationMarkdown(
+			result.run.id,
+			renderObservationMd(observation, result.run),
+		);
+	} catch (e) {
+		const message = e instanceof Error ? e.message : String(e);
+		throw miraError(
+			"INTERNAL",
+			`failed to persist observation ${result.run.id}: ${message}`,
+		);
+	}
 
 	return { observation };
 }

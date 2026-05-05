@@ -7,6 +7,7 @@ import { renderContextMd } from "../../cli/render-context.ts";
 import { buildContextPack } from "../../context/context-pack-generator.ts";
 import type { ContextPack } from "../../core/context-pack.ts";
 import { FileEvidenceStore } from "../../store/evidence-store.ts";
+import { miraError } from "../errors.ts";
 import { validateProjectRoot } from "../project-root.ts";
 
 const MAX_OBSERVATIONS = 10;
@@ -41,9 +42,35 @@ export async function runGenerateContextPackTool(
 	const task = typeof input.task === "string" ? input.task : "";
 
 	const store = new FileEvidenceStore(projectRoot);
-	const observations = store.listRecentObservations(MAX_OBSERVATIONS);
-	const architectureSignals = await senseArchitecture(projectRoot);
-	const { contextId, mdPath } = store.createContext();
+	let observations: Awaited<
+		ReturnType<FileEvidenceStore["listRecentObservations"]>
+	>;
+	try {
+		observations = store.listRecentObservations(MAX_OBSERVATIONS);
+	} catch (e) {
+		const message = e instanceof Error ? e.message : String(e);
+		throw miraError(
+			"INTERNAL",
+			`failed to read recent observations: ${message}`,
+		);
+	}
+
+	let architectureSignals: Awaited<ReturnType<typeof senseArchitecture>>;
+	try {
+		architectureSignals = await senseArchitecture(projectRoot);
+	} catch (e) {
+		const message = e instanceof Error ? e.message : String(e);
+		throw miraError("INTERNAL", `architecture sensing failed: ${message}`);
+	}
+
+	let contextId: string;
+	let mdPath: string;
+	try {
+		({ contextId, mdPath } = store.createContext());
+	} catch (e) {
+		const message = e instanceof Error ? e.message : String(e);
+		throw miraError("INTERNAL", `failed to create context dir: ${message}`);
+	}
 
 	const pack = buildContextPack({
 		id: contextId,
@@ -53,8 +80,19 @@ export async function runGenerateContextPackTool(
 		architectureSignals,
 	});
 
-	store.writeContextJson(contextId, pack);
-	store.writeContextMarkdown(contextId, renderContextMd(pack, dirname(mdPath)));
+	try {
+		store.writeContextJson(contextId, pack);
+		store.writeContextMarkdown(
+			contextId,
+			renderContextMd(pack, dirname(mdPath)),
+		);
+	} catch (e) {
+		const message = e instanceof Error ? e.message : String(e);
+		throw miraError(
+			"INTERNAL",
+			`failed to persist context pack ${contextId}: ${message}`,
+		);
+	}
 
 	return { pack };
 }

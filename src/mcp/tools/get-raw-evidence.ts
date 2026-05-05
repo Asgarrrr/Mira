@@ -3,15 +3,25 @@ import { isAbsolute, relative, resolve } from "node:path";
 
 import { z } from "zod";
 
-import type { EvidenceRef } from "../../core/evidence.ts";
+import type { EvidenceKind, EvidenceRef } from "../../core/evidence.ts";
 import { miraError } from "../errors.ts";
 import { validateProjectRoot } from "../project-root.ts";
+
+const EVIDENCE_KINDS: readonly [EvidenceKind, ...EvidenceKind[]] = [
+	"stdout",
+	"stderr",
+	"combined",
+	"metadata",
+	"observation",
+	"context",
+	"other",
+];
 
 export const getRawEvidenceInputShape = {
 	ref: z
 		.object({
 			path: z.string(),
-			kind: z.string(),
+			kind: z.enum(EVIDENCE_KINDS),
 			description: z.string().optional(),
 		})
 		.describe(
