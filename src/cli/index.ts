@@ -1,10 +1,12 @@
 #!/usr/bin/env bun
+import { runContext } from "./context.ts";
 import { runCommand } from "./run.ts";
 
 const USAGE = `usage: mira <command> [args...]
 
 Commands:
-  run "<command>"   execute a command, capture evidence, write an observation
+  run "<command>"     execute a command, capture evidence, write an observation
+  context "<task>"    bundle the last 10 observations into a ContextPack
 `;
 
 async function main(): Promise<void> {
@@ -18,6 +20,11 @@ async function main(): Promise<void> {
 	switch (subcommand) {
 		case "run": {
 			const code = await runCommand(rest);
+			process.exit(code);
+			break;
+		}
+		case "context": {
+			const code = await runContext(rest);
 			process.exit(code);
 			break;
 		}
