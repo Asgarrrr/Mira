@@ -16,7 +16,11 @@ V0.1 adds:
 Context Kernel
 ```
 
-A future Architecture Kernel is sketched at the end of this document but is not built in V0 or V0.1.
+V0.2 adds:
+
+```txt
+Architecture Kernel
+```
 
 Each kernel produces or consumes evidence.
 
@@ -63,6 +67,21 @@ ContextPack (references observations by id)
     |
     v
 Agent-facing output
+```
+
+V0.2 extension (inside the Context Kernel pipeline):
+
+```txt
+mira context "<task>"
+    |
+    v
+Architecture Kernel: senseArchitecture(cwd)
+    |
+    v
+ArchitectureSignal[] (changed / related / test / import-hint)
+    |
+    v
+ContextPack.suspectedFiles (deterministic projection)
 ```
 
 ## Evidence Kernel
@@ -159,6 +178,30 @@ A context pack should never invent facts. It can include heuristics, but they mu
 
 The "since last ContextPack" selection mode is explicitly out of scope for V0.1.
 
+## Architecture Kernel (V0.2)
+
+The Architecture Kernel produces task-aware structural signals tied to evidence — `ArchitectureSignal`s — that the Context Kernel projects onto `ContextPack.suspectedFiles`.
+
+Responsibilities:
+
+* read git working-tree state (`changed-file` signals)
+* find related files in the same directory by basename stem (`related-file`)
+* find conventional test counterparts (`test-file`)
+* find files containing a textual import reference to a changed file (`import-hint`)
+* verify that every emitted signal references a path that exists on disk
+
+Non-responsibilities:
+
+* no AST, no TypeScript Compiler API, no semantic analysis
+* no transitive import graph
+* no module ownership or package boundary detection
+* no global codebase scoring (Phase 5 is task-aware impact, not health-of-codebase)
+* no plugin layer, no `Sensor<T>` interface, no dispatch table
+* no persistence as standalone evidence in V0.2 — signals are computed on demand at `mira context` time
+* not embedded in `CommandObservation` — that surface stays for command activity
+
+Full type, scope, and population policy: ADR 0005.
+
 ## Dependency direction
 
 Preferred dependency direction:
@@ -168,9 +211,10 @@ cli -> kernels -> core types
 adapters -> core types
 summarizers -> core types
 store -> core types
+architecture -> core types
 ```
 
-Core types should not depend on CLI, adapters, or storage implementation.
+Core types should not depend on CLI, adapters, storage implementation, or the architecture kernel. The architecture kernel depends on core types only — never the inverse.
 
 ## Initial source structure
 
@@ -217,6 +261,19 @@ tests/
   context-pack.test.ts
 ```
 
+V0.2 will add:
+
+```txt
+src/
+  architecture/
+    architecture-signal.ts        ArchitectureSignalKind, ArchitectureSignal
+    sense.ts                      senseArchitecture(cwd): Promise<ArchitectureSignal[]>
+tests/
+  architecture-signal.test.ts
+```
+
+`src/architecture/` is the single home for sensing logic. The four heuristics (`changed-file`, `related-file`, `test-file`, `import-hint`) may be inlined or split into local helpers inside `sense.ts`; no exposed dispatch surface, no `Sensor<T>` interface. `src/context/context-pack-generator.ts` is extended (not replaced) to call `senseArchitecture` and project signals onto `ContextPack.suspectedFiles`.
+
 Interface/implementation splits, multiple observers, and command-specific summarizers are deferred until they are justified by an actual need.
 
 ## Design constraints
@@ -246,7 +303,7 @@ A feature is not complete unless:
 
 ## Post-V0 layers
 
-These layers are not part of V0 or V0.1 but are sketched here so the kernel boundaries stay clean as Mira grows.
+These layers are not part of V0, V0.1, or V0.2 but are sketched here so the kernel boundaries stay clean as Mira grows.
 
 ### Adapter layer (post-V0)
 
@@ -256,8 +313,6 @@ Adapters are not built in V0; they appear when the first real external integrati
 
 MCP is not an adapter. It is the protocol Mira will use to expose its evidence model to coding agents (see `docs/workflow.md` Phase 6).
 
-### Architecture Kernel (post-V0)
+### Richer architecture sensing (post-V0.2)
 
-Will produce task-aware structural signals tied to evidence — changed files, related files, test hints, eventually import graphs and module ownership.
-
-Mira will build its own version of architecture sensing inside the evidence model. It is deliberately not started in V0 or V0.1; see `docs/non-goals.md` and `docs/workflow.md` Phase 5.
+V0.2 ships a single `src/architecture/` module with four filesystem-only heuristics (see the Architecture Kernel section above and ADR 0005). Transitive import graphs, module ownership, package boundaries, AST-level analysis, and cross-language conventions remain explicitly out of scope for V0.2 and are deferred to a later phase.
