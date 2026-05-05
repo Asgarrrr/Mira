@@ -21,9 +21,10 @@ describe("FileEvidenceStore", () => {
 		const store = new FileEvidenceStore(projectRoot);
 		expect(existsSync(join(projectRoot, ".mira"))).toBe(false);
 
-		const { runId, runDir } = store.createRun();
+		const { runId, runDir, metadataPath } = store.createRun();
 
 		expect(runDir).toBe(join(projectRoot, ".mira", "runs", runId));
+		expect(metadataPath).toBe(join(runDir, "metadata.json"));
 		expect(existsSync(runDir)).toBe(true);
 	});
 
@@ -37,13 +38,19 @@ describe("FileEvidenceStore", () => {
 		expect(existsSync(r2.runDir)).toBe(true);
 	});
 
-	test("parallel createRun() calls produce distinct ids", async () => {
+	test("parallel createRun() calls produce distinct ids and dirs on disk", async () => {
 		const store = new FileEvidenceStore(projectRoot);
 		const results = await Promise.all(
 			Array.from({ length: 16 }, () => Promise.resolve(store.createRun())),
 		);
+
 		const ids = new Set(results.map((r) => r.runId));
+		const dirs = new Set(results.map((r) => r.runDir));
 		expect(ids.size).toBe(16);
+		expect(dirs.size).toBe(16);
+		for (const r of results) {
+			expect(existsSync(r.runDir)).toBe(true);
+		}
 	});
 
 	test("writeStdout / writeStderr / writeCombined round-trip via readEvidence", () => {
@@ -70,9 +77,11 @@ describe("FileEvidenceStore", () => {
 			startedAt: "2026-05-05T14:30:25.123Z",
 			durationMs: 12,
 			exitCode: 0,
+			killedByTimeout: false,
 			stdoutPath: join(runDir, "stdout.log"),
 			stderrPath: join(runDir, "stderr.log"),
 			combinedPath: join(runDir, "combined.log"),
+			metadataPath: join(runDir, "metadata.json"),
 		};
 		store.writeMetadata(runId, run);
 

@@ -4,8 +4,11 @@ export type CommandRun = {
 	cwd: string;
 	startedAt: string;
 	durationMs: number;
-	exitCode: number;
+	exitCode: number | null;
+	signal?: string;
+	killedByTimeout: boolean;
 	stdoutPath: string;
 	stderrPath: string;
 	combinedPath: string;
+	metadataPath: string;
 };

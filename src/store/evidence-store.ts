@@ -29,12 +29,13 @@ export class FileEvidenceStore {
 		this.runsDir = join(projectRoot, ".mira", "runs");
 	}
 
-	createRun(): { runId: string; runDir: string } {
+	createRun(): { runId: string; runDir: string; metadataPath: string } {
 		mkdirSync(this.runsDir, { recursive: true });
 		const runId = generateRunId();
 		const runDir = join(this.runsDir, runId);
 		mkdirSync(runDir);
-		return { runId, runDir };
+		const metadataPath = join(runDir, FILENAMES.metadata);
+		return { runId, runDir, metadataPath };
 	}
 
 	writeStdout(runId: string, text: string): void {
