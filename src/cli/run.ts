@@ -1,5 +1,3 @@
-import { join } from "node:path";
-
 import { CommandObserver } from "../command/command-observer.ts";
 import { buildObservation } from "../core/command-observation.ts";
 import { FileEvidenceStore } from "../store/evidence-store.ts";
@@ -18,17 +16,21 @@ export async function runCommand(args: string[]): Promise<number> {
 
 	const { run, stdout, stderr } = await observer.observe(command, cwd);
 
-	const metadataPath = join(store.runDir(run.id), "metadata.json");
-	const observation = buildObservation(run, metadataPath);
+	const observation = buildObservation(run);
 	store.writeObservationJson(run.id, observation);
 	store.writeObservationMarkdown(run.id, renderObservationMd(observation, run));
 
 	if (stdout) process.stdout.write(stdout);
 	if (stderr) process.stderr.write(stderr);
 
+	const statusBit =
+		run.exitCode === null
+			? `signal ${run.signal ?? "unknown"}`
+			: `exit ${run.exitCode}`;
+	const timeoutBit = run.killedByTimeout ? " · timed-out" : "";
 	process.stderr.write(
-		`[mira] ${run.id} · ${observation.status} · exit ${run.exitCode} · ${run.durationMs}ms · .mira/runs/${run.id}/\n`,
+		`[mira] ${run.id} · ${observation.status} · ${statusBit}${timeoutBit} · ${run.durationMs}ms · .mira/runs/${run.id}/\n`,
 	);
 
-	return run.exitCode;
+	return run.exitCode ?? 1;
 }

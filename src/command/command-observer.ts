@@ -16,7 +16,7 @@ export class CommandObserver {
 	) {}
 
 	async observe(command: string, cwd: string): Promise<ObserveResult> {
-		const { runId, runDir } = this.store.createRun();
+		const { runId, runDir, metadataPath } = this.store.createRun();
 		const startedAt = new Date().toISOString();
 		const start = Date.now();
 
@@ -29,10 +29,20 @@ export class CommandObserver {
 		let stdoutBuf = "";
 		let stderrBuf = "";
 		let combinedBuf = "";
+		let killedByTimeout = false;
+		let completed = false;
 
-		const timer = setTimeout(() => proc.kill("SIGKILL"), this.timeoutMs);
+		const timer = setTimeout(() => {
+			if (completed) return;
+			killedByTimeout = true;
+			proc.kill("SIGKILL");
+		}, this.timeoutMs);
 
-		const [, , rawExit] = await Promise.all([
+		const exitedSentinel = proc.exited.then(() => {
+			completed = true;
+		});
+
+		await Promise.all([
 			pump(proc.stdout, (chunk) => {
 				stdoutBuf += chunk;
 				combinedBuf += chunk;
@@ -41,13 +51,14 @@ export class CommandObserver {
 				stderrBuf += chunk;
 				combinedBuf += chunk;
 			}),
-			proc.exited,
+			exitedSentinel,
 		]);
 
 		clearTimeout(timer);
 
 		const durationMs = Date.now() - start;
-		const exitCode = typeof rawExit === "number" ? rawExit : 1;
+		const exitCode = proc.exitCode;
+		const signal = proc.signalCode ?? undefined;
 
 		this.store.writeStdout(runId, stdoutBuf);
 		this.store.writeStderr(runId, stderrBuf);
@@ -60,9 +71,12 @@ export class CommandObserver {
 			startedAt,
 			durationMs,
 			exitCode,
+			...(signal !== undefined ? { signal } : {}),
+			killedByTimeout,
 			stdoutPath: join(runDir, "stdout.log"),
 			stderrPath: join(runDir, "stderr.log"),
 			combinedPath: join(runDir, "combined.log"),
+			metadataPath,
 		};
 
 		this.store.writeMetadata(runId, run);

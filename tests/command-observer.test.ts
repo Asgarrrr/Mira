@@ -108,7 +108,7 @@ describe("CommandObserver", () => {
 		expect(fromDisk).toEqual(run);
 	});
 
-	test("kills the process when timeout is hit", async () => {
+	test("flags killedByTimeout and exposes the SIGKILL signal", async () => {
 		const store = new FileEvidenceStore(projectRoot);
 		const observer = new CommandObserver(store, 100);
 
@@ -116,7 +116,20 @@ describe("CommandObserver", () => {
 		const { run } = await observer.observe("sleep 5", projectRoot);
 		const elapsed = Date.now() - start;
 
-		expect(run.exitCode).not.toBe(0);
+		expect(run.killedByTimeout).toBe(true);
+		expect(run.signal).toBe("SIGKILL");
+		expect(run.exitCode).toBeNull();
 		expect(elapsed).toBeLessThan(2000);
+	});
+
+	test("successful runs report killedByTimeout=false and no signal", async () => {
+		const store = new FileEvidenceStore(projectRoot);
+		const observer = new CommandObserver(store);
+
+		const { run } = await observer.observe("echo ok", projectRoot);
+
+		expect(run.exitCode).toBe(0);
+		expect(run.killedByTimeout).toBe(false);
+		expect(run.signal).toBeUndefined();
 	});
 });
