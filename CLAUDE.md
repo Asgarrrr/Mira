@@ -53,13 +53,28 @@ Out of scope for V0: interactive stdin/TTY commands, configurable timeout, outpu
 - The pack references observations by id; it does not embed them.
 - `task` is free text.
 
+## V0.2 scope
+
+- `mira context` populates `ContextPack.suspectedFiles` via `senseArchitecture(cwd)`.
+- Four filesystem-only heuristics: `changed-file`, `related-file`, `test-file`, `import-hint`. No AST, no import graph.
+- `ArchitectureSignal[]` is computed on demand inside `mira context`; it is **not** embedded in `CommandObservation` and **not** persisted as standalone evidence.
+- `suspectedFiles` is deduplicated and capped at 20, ordered by kind then alphabetical. See `docs/adr/0005-architecture-sensing-v0-2-scope.md`.
+
+## V0.3 scope
+
+- Mira ships an MCP server (stdio, local) that re-exposes the existing kernels.
+- Exactly five tools, hard-coded: `run_command`, `get_observation`, `get_raw_evidence`, `generate_context_pack`, `list_recent_runs`.
+- Tools return existing types verbatim (`CommandObservation`, `ContextPack`, `EvidenceRef`); no new domain type.
+- Every tool takes an explicit absolute `projectRoot`; the server never reads `process.cwd()` to resolve a project.
+- Process-level outcomes (non-zero exit, signal, timeout) are reported via `CommandObservation` fields, never via MCP errors. See `docs/adr/0006-mcp-server-v0-3-scope.md`.
+
 ## Core abstractions (V0)
 
 - `EvidenceStore`: stores raw and derived evidence.
 - `CommandObserver`: observes command execution.
 - `CommandObservation`: structured command result with evidence references.
 
-V0.1 adds `ContextPack`. `ToolAdapter` is deferred to post-V0. `ArchitectureSignal` is removed from the V0 model and may be reconsidered as a future concept. See `docs/adr/0001-core-abstractions.md`.
+V0.1 adds `ContextPack`. V0.2 adds `ArchitectureSignal` (computed on demand inside `mira context`, not persisted as standalone evidence; see ADR 0005). V0.3 adds an MCP boundary but no new domain type (see ADR 0006). `ToolAdapter` remains deferred to post-V0. See `docs/adr/0001-core-abstractions.md`.
 
 ## Workflow
 

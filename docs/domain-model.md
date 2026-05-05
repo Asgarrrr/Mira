@@ -160,6 +160,19 @@ type ArchitectureSignal = {
 
 V0.2 sensing is filesystem-only: it reads `git status` / `git diff` for changed files and uses `readdir`, basename / dirname, glob, and textual grep for the rest. No AST, no TypeScript Compiler API, no semantic analysis, no new npm dependency. Full scope, exclusions, and invariants live in ADR 0005.
 
+## MCP layer (V0.3)
+
+V0.3 introduces no new domain type.
+
+The MCP boundary re-exposes the existing kernels over stdio. Its five tools take typed inputs and return existing types verbatim:
+
+- `run_command` and `get_observation` return `CommandObservation`.
+- `get_raw_evidence` returns the raw bytes of a file referenced by an existing `EvidenceRef`.
+- `generate_context_pack` returns `ContextPack` (whose `suspectedFiles` already projects `ArchitectureSignal[]` per ADR 0005).
+- `list_recent_runs` returns a slim projection of fields already present on `CommandObservation` and `CommandRun` — it introduces no new field.
+
+Errors are reported through the SDK's `McpError` envelope; no domain-level error type is added in V0.3. Full input/output/error contracts and the per-tool kernel mapping live in ADR 0006.
+
 ## ToolAdapter (post-V0)
 
 Adapters are the planned integration boundary for external tools (RTK, Sentrux, git, test runners). They are **not built in V0 or V0.1**.
@@ -184,4 +197,5 @@ type ToolAdapter<TInput> = {
 - Every `Finding` is backed by at least one `EvidenceExcerpt` or `EvidenceRef`.
 - `ContextPack` references `CommandObservation`s by id; it never embeds them.
 - Every `ArchitectureSignal` references a filesystem path that exists on disk at signal-creation time (V0.2).
+- The MCP layer (V0.3) consumes existing types and introduces none. Process-level command outcomes (non-zero exit, signal, timeout) are preserved through `CommandObservation` fields, never via MCP errors.
 - The canonical invariant list lives in `docs/adr/0001-core-abstractions.md`.
