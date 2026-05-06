@@ -136,6 +136,32 @@ describe("get_observation tool", () => {
 		}
 	});
 
+	test("INTERNAL when observation.json is JSON-valid but wrong-shape", async () => {
+		// Regression for audit M1: a JSON-valid blob with the wrong shape
+		// (e.g., an older Mira version's schema, or a partial write that
+		// landed between two valid braces) used to flow through
+		// `as CommandObservation` and reach the agent as a silent success
+		// payload of `{"observation":{"totally":"wrong"}}`. The fix rejects
+		// it on read with INTERNAL, mirroring the malformed-JSON case above —
+		// shape correctness is now part of the contract.
+		writeObservation(
+			projectRoot,
+			"run_wrong_shape",
+			JSON.stringify({ totally: "wrong" }),
+		);
+
+		try {
+			await runGetObservationTool({
+				observationId: "run_wrong_shape",
+				projectRoot,
+			});
+			throw new Error("expected throw");
+		} catch (err) {
+			expect(err).toBeInstanceOf(McpError);
+			expect((err as McpError).data).toMatchObject({ code: "INTERNAL" });
+		}
+	});
+
 	test("INVALID_INPUT when projectRoot is not a directory", async () => {
 		try {
 			await runGetObservationTool({

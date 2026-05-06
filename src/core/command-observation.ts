@@ -1,29 +1,40 @@
-import type { CommandRun } from "./command-run.ts";
-import type { EvidenceRef } from "./evidence.ts";
-import type { Finding } from "./finding.ts";
+import { z } from "zod";
 
-export type CommandObservation = {
-	id: string;
-	runId: string;
-	command: string;
-	status: "success" | "failure";
-	exitCode: number | null;
-	signal?: string;
-	killedByTimeout: boolean;
-	durationMs: number;
-	summary: string;
-	findings: Finding[];
-	relatedFiles: string[];
-	suggestedNextActions: string[];
-	verificationHints: string[];
-	evidenceRefs: EvidenceRef[];
-};
+import type { CommandRun } from "./command-run.ts";
+import { evidenceRefSchema } from "./evidence.ts";
+import { findingSchema } from "./finding.ts";
+
+// Runtime shape check for persisted observation.json. The schema mirrors the
+// fields that `buildObservation` produces, so today's writes round-trip
+// unchanged. M1: read paths parse against this schema before returning to
+// agents — a JSON-valid-but-wrong-shape blob is rejected instead of silently
+// surfacing as a `CommandObservation` (audit/05). Sub-schemas for
+// `EvidenceRef` and `Finding` live with their own types in `evidence.ts` and
+// `finding.ts`.
+export const commandObservationSchema = z.object({
+	id: z.string(),
+	runId: z.string(),
+	command: z.string(),
+	status: z.enum(["success", "failure"]),
+	exitCode: z.number().nullable(),
+	signal: z.string().optional(),
+	killedByTimeout: z.boolean(),
+	durationMs: z.number(),
+	summary: z.string(),
+	findings: z.array(findingSchema),
+	relatedFiles: z.array(z.string()),
+	suggestedNextActions: z.array(z.string()),
+	verificationHints: z.array(z.string()),
+	evidenceRefs: z.array(evidenceRefSchema),
+});
+
+export type CommandObservation = z.infer<typeof commandObservationSchema>;
 
 export function buildObservation(run: CommandRun): CommandObservation {
 	const status: CommandObservation["status"] =
 		run.exitCode === 0 ? "success" : "failure";
 
-	const evidenceRefs: EvidenceRef[] = [
+	const evidenceRefs: CommandObservation["evidenceRefs"] = [
 		{ path: run.stdoutPath, kind: "stdout" },
 		{ path: run.stderrPath, kind: "stderr" },
 		{ path: run.combinedPath, kind: "combined" },

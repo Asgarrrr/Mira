@@ -3,7 +3,10 @@ import { join } from "node:path";
 
 import { z } from "zod";
 
-import type { CommandObservation } from "../../core/command-observation.ts";
+import {
+	type CommandObservation,
+	commandObservationSchema,
+} from "../../core/command-observation.ts";
 import { miraError } from "../errors.ts";
 import { validateProjectRoot } from "../project-root.ts";
 
@@ -69,9 +72,15 @@ export async function runGetObservationTool(
 		);
 	}
 
+	// M1: parse first (catches malformed JSON), then validate the shape
+	// against `commandObservationSchema`. A JSON-valid but wrong-shape blob
+	// (older Mira version, partial write that landed between two valid
+	// braces, etc.) is a genuine integrity failure of the persisted store
+	// and surfaces as INTERNAL — not a silent success carrying garbage to
+	// the agent.
 	let observation: CommandObservation;
 	try {
-		observation = JSON.parse(raw) as CommandObservation;
+		observation = commandObservationSchema.parse(JSON.parse(raw));
 	} catch (e) {
 		const message = e instanceof Error ? e.message : String(e);
 		throw miraError(

@@ -113,6 +113,25 @@ describe("FileEvidenceStore", () => {
 		expect(() => store.readRun("run_nope")).toThrow();
 	});
 
+	test("readRun rejects metadata.json that is JSON-valid but wrong-shape", () => {
+		// Regression for audit M1: a metadata.json that parses (well-formed
+		// JSON) but doesn't match `commandRunSchema` — e.g., an older Mira
+		// version's schema, or a partial write that landed between two valid
+		// braces — used to flow through `as CommandRun` and propagate as a
+		// CommandRun with missing fields. The kernel now throws on shape
+		// mismatch so the MCP boundary maps it to INTERNAL instead of
+		// surfacing a half-built row to the agent.
+		const store = new FileEvidenceStore(projectRoot);
+		const { runId, runDir } = store.createRun();
+		writeFileSync(
+			join(runDir, "metadata.json"),
+			JSON.stringify({ totally: "wrong" }),
+			"utf8",
+		);
+
+		expect(() => store.readRun(runId)).toThrow();
+	});
+
 	test("listRecentObservations returns [] when .mira/runs does not exist yet", () => {
 		const store = new FileEvidenceStore(projectRoot);
 		expect(store.listRecentObservations(10)).toEqual([]);
@@ -259,6 +278,63 @@ describe("FileEvidenceStore", () => {
 
 		expect(recent.length).toBe(2);
 		expect(recentIds).not.toContain(corruptId);
+		expect(recentIds).toEqual(expectedIds);
+	});
+
+	test("listRecentObservations skips run dirs whose observation.json is JSON-valid but wrong-shape", () => {
+		// Regression for audit M1: an observation.json that parses (well-formed
+		// JSON) but doesn't match `commandObservationSchema` — e.g., an older
+		// Mira version's schema or a partial write that landed between two
+		// valid braces — used to flow through `as CommandObservation` and
+		// surface as a CommandObservation with none of the expected fields.
+		// The fix treats a shape mismatch the same way H2 treats a parse-throw:
+		// skip the row, don't poison the projection.
+		const store = new FileEvidenceStore(projectRoot);
+		const runsRoot = join(projectRoot, ".mira", "runs");
+		const ids = [
+			"run_20260505T143010000Z_a00001",
+			"run_20260505T143020000Z_a00002",
+			"run_20260505T143030000Z_a00003",
+		];
+
+		for (const id of ids) {
+			const dir = join(runsRoot, id);
+			mkdirSync(dir, { recursive: true });
+			const observation: CommandObservation = {
+				id,
+				runId: id,
+				command: `echo ${id}`,
+				status: "success",
+				exitCode: 0,
+				killedByTimeout: false,
+				durationMs: 1,
+				summary: `\`echo ${id}\` exited with code 0 in 1ms`,
+				findings: [],
+				relatedFiles: [],
+				suggestedNextActions: [],
+				verificationHints: [],
+				evidenceRefs: [],
+			};
+			writeFileSync(
+				join(dir, "observation.json"),
+				`${JSON.stringify(observation, null, 2)}\n`,
+				"utf8",
+			);
+		}
+
+		const wrongShapeId = ids[1] as string;
+		writeFileSync(
+			join(runsRoot, wrongShapeId, "observation.json"),
+			JSON.stringify({ totally: "wrong" }),
+			"utf8",
+		);
+
+		const recent = store.listRecentObservations(10);
+		const recentIds = recent.map((o) => o.id);
+		const expectedIds = [...ids].reverse().filter((id) => id !== wrongShapeId);
+
+		expect(recent.length).toBe(2);
+		expect(recentIds).not.toContain(wrongShapeId);
 		expect(recentIds).toEqual(expectedIds);
 	});
 
