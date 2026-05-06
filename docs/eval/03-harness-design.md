@@ -76,6 +76,7 @@ Loop:
 - Same scenario base state per repeat (re-applied from `base.patch` on a fresh worktree of the current repo)
 - Pinned model version string
 - Same system prompt
+- `maxTokensPerTurn` per-call output cap (smoke default `8192`; raise per-scenario in sub-task iv if a longer single response is legitimately needed; don't go above `16_384` — at temp=0 the tail of long responses is rarely productive and the per-scenario budget is finite)
 
 Determinism is not full — model output still varies. That's why N=3 repeats.
 

@@ -116,7 +116,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
 		turn += 1;
 		const response = await client.messages.create({
 			model: config.model,
-			max_tokens: 4096,
+			max_tokens: config.maxTokensPerTurn,
 			temperature: config.temperature,
 			system: SYSTEM_PROMPT,
 			tools: anthropicTools,
