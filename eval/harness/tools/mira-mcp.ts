@@ -44,12 +44,8 @@ export async function createMiraMcpForAgent(): Promise<MiraMcpHandle> {
 	const [serverTransport, clientTransport] =
 		InMemoryTransport.createLinkedPair();
 	const client = new Client({ name: "mira-eval-harness", version: "0.0.1" });
-	// The two SDK copies (root node_modules and eval/node_modules) are pinned
-	// to the same major. The structural-typing mismatch TS sees here is a
-	// package-identity artefact, not a runtime issue.
 	await Promise.all([
-		// biome-ignore lint/suspicious/noExplicitAny: cross-package type identity
-		server.connect(serverTransport as any),
+		server.connect(serverTransport),
 		client.connect(clientTransport),
 	]);
 

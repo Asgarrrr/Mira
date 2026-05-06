@@ -2,11 +2,15 @@
 	"name": "mira",
 	"type": "module",
 	"private": true,
+	"workspaces": [
+		"eval"
+	],
 	"bin": {
 		"mira": "./src/cli/index.ts"
 	},
 	"scripts": {
-		"test": "bun test",
+		"test": "bun test tests/",
+		"test:eval": "cd eval && bun test",
 		"typecheck": "tsc --noEmit",
 		"lint": "biome lint .",
 		"format": "biome format --write .",
@@ -20,6 +24,7 @@
 		"typescript": "^5"
 	},
 	"dependencies": {
-		"@modelcontextprotocol/sdk": "^1.29.0"
+		"@modelcontextprotocol/sdk": "^1.29.0",
+		"zod": "^4.4.3"
 	}
 }
