@@ -2,6 +2,18 @@
 
 Types are listed in the order they appear in the V0 vertical slice, then V0.1, then V0.2, then post-V0. Each type exists once in this document and is labelled with the layer it belongs to.
 
+## Why these types
+
+The types below are not arbitrary. They are the smallest set that makes one invariant enforceable: every agent-facing conclusion is backed by traceable raw evidence.
+
+Three design choices follow:
+
+- **`Evidence` is a typed object, not a category.** It carries the path, kind, and provenance of a real file under `.mira/`. Without that concreteness, "evidence-backed" devolves into a slogan.
+- **`EvidenceRef` is separate from `Evidence`.** Refs travel inside observations, packs, and findings — bytes do not. This split is what lets observations stay compact while remaining traceable.
+- **`Finding` is separate from `EvidenceExcerpt`.** A finding is an interpreted signal; an excerpt is the raw lines that justify it. Splitting them prevents interpretation from drifting away from the source.
+
+Every other type either composes these three (`CommandObservation`, `ContextPack`) or extends the evidence model into a new dimension (`ArchitectureSignal` for structural sensing, `ToolAdapter` for external integrations).
+
 ## Evidence (V0)
 
 Evidence is the stored artifact produced or observed by Mira. Every evidence file lives under `.mira/` and is reachable by its path. Evidence is concrete — it is not just a category, it is a typed object whose fields describe what is on disk.

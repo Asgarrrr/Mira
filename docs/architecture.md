@@ -1,6 +1,18 @@
 # Architecture
+
+## Why this shape
+
+Mira's architecture follows from one constraint: every agent-facing conclusion must be backed by traceable raw evidence. That constraint dictates the rest.
+
+The system is split into **kernels** — small, single-responsibility units — rather than layered services. Each kernel either produces or consumes evidence and does nothing else. This keeps kernels independently testable, replaceable, and composable. The dependency direction is one-way by design: CLI and MCP adapt to the kernels, never the inverse.
+
+A separate **boundary layer** (the MCP server is the first instance) re-exposes kernels without becoming one. Boundaries translate; they do not produce evidence. Keeping them outside the kernel set lets new boundaries (HTTP, IDE bindings, agent-specific bridges) be added later without touching what kernels do.
+
+Two background principles run across the whole architecture:
+
 - Épurée by default: small API surface, compact outputs, clear files, minimal concepts.
-- Details should be recoverable through evidence references, not dumped into every response.
+- Details are recoverable through evidence references, not dumped into every response.
+
 ## Overview
 
 Mira V0 is organized around two kernels:
