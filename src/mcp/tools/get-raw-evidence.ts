@@ -67,8 +67,17 @@ export async function runGetRawEvidenceTool(
 		stat = statSync(safePath);
 	} catch (e) {
 		const err = e as NodeJS.ErrnoException;
+		// ADR 0006 § Error model lists four codes; ENAMETOOLONG/EACCES are not
+		// enumerated. ENAMETOOLONG = malformed input (path > OS limit), EACCES =
+		// closer to "missing" than "bug". The INTERNAL default is the contract.
+		if (err.code === "ENAMETOOLONG") {
+			throw miraError("INVALID_INPUT", "ref.path too long");
+		}
 		if (err.code === "ENOENT") {
 			throw miraError("NOT_FOUND", `evidence not found: ${refPath}`);
+		}
+		if (err.code === "EACCES") {
+			throw miraError("NOT_FOUND", `evidence file unreadable: ${refPath}`);
 		}
 		throw miraError(
 			"INTERNAL",
@@ -83,7 +92,14 @@ export async function runGetRawEvidenceTool(
 	try {
 		content = readFileSync(safePath, "utf8");
 	} catch (e) {
-		const message = e instanceof Error ? e.message : String(e);
+		const err = e as NodeJS.ErrnoException;
+		if (err.code === "ENAMETOOLONG") {
+			throw miraError("INVALID_INPUT", "ref.path too long");
+		}
+		if (err.code === "EACCES") {
+			throw miraError("NOT_FOUND", `evidence file unreadable: ${refPath}`);
+		}
+		const message = err.message ?? String(err);
 		throw miraError("INTERNAL", `failed to read ${refPath}: ${message}`);
 	}
 

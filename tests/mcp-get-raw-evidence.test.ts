@@ -150,6 +150,25 @@ describe("get_raw_evidence tool", () => {
 		}
 	});
 
+	test("INVALID_INPUT when ref.path is longer than the OS path limit (ENAMETOOLONG)", async () => {
+		// ADR 0006 § Error model: ENAMETOOLONG is a malformed input, not a bug —
+		// `INTERNAL` would mislead clients that branch on `code`.
+		const longSegment = "a".repeat(10_000);
+		try {
+			await runGetRawEvidenceTool({
+				ref: { path: `runs/run_x/${longSegment}`, kind: "stdout" },
+				projectRoot,
+			});
+			throw new Error("expected throw");
+		} catch (err) {
+			expect(err).toBeInstanceOf(McpError);
+			expect((err as McpError).data).toMatchObject({
+				code: "INVALID_INPUT",
+				message: "ref.path too long",
+			});
+		}
+	});
+
 	test("does not truncate or summarize content (large file is returned verbatim)", async () => {
 		const big = `${"x".repeat(200_000)}\n`;
 		writeFileSync(

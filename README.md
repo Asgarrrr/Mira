@@ -6,13 +6,7 @@
   </picture>
 </p>
 
-# Mira
-
-**The substrate that owns the context layer for AI coding agents.**
-
-Not an agent. Not a tool among tools. The layer.
-
----
+Not an agent. Not a tool among tools. **The layer.**
 
 Coding agents do not fail because they generate poorly. They fail because they reason from the wrong context — missed patterns, irrelevant files in scope, raw terminal output mistaken for signal, no memory across tasks.
 
