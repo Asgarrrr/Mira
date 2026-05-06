@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
-
-import { renderObservationMd } from "../src/cli/render-observation.ts";
 import { buildObservation } from "../src/core/command-observation.ts";
 import type { CommandRun } from "../src/core/command-run.ts";
+import { renderObservationMd } from "../src/render/render-observation.ts";
 
 const RUN_DIR = "/tmp/project/.mira/runs/run_20260505T143025123Z_a4f2k9";
 

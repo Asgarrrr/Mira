@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
-
-import { renderContextMd } from "../src/cli/render-context.ts";
 import { buildContextPack } from "../src/context/context-pack-generator.ts";
 import type { CommandObservation } from "../src/core/command-observation.ts";
+import { renderContextMd } from "../src/render/render-context.ts";
 
 const PROJECT = "/tmp/project";
 const CONTEXT_DIR = `${PROJECT}/.mira/context`;

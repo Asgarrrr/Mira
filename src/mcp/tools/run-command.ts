@@ -1,11 +1,10 @@
 import { z } from "zod";
-
-import { renderObservationMd } from "../../cli/render-observation.ts";
 import { CommandObserver } from "../../command/command-observer.ts";
 import {
 	buildObservation,
 	type CommandObservation,
 } from "../../core/command-observation.ts";
+import { renderObservationMd } from "../../render/render-observation.ts";
 import { FileEvidenceStore } from "../../store/evidence-store.ts";
 import { miraError } from "../errors.ts";
 import { validateProjectRoot } from "../project-root.ts";
