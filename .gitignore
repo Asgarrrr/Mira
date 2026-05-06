@@ -35,3 +35,7 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 # mira evidence store
 .mira/
+
+# eval harness artefacts (transcripts, ephemeral workdirs)
+eval/results/
+
