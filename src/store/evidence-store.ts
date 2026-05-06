@@ -11,7 +11,7 @@ import {
 	type CommandObservation,
 	commandObservationSchema,
 } from "../core/command-observation.ts";
-import type { CommandRun } from "../core/command-run.ts";
+import { type CommandRun, commandRunSchema } from "../core/command-run.ts";
 import type { ContextPack } from "../core/context-pack.ts";
 import { generateContextId, generateRunId } from "../core/ids.ts";
 
@@ -82,7 +82,15 @@ export class FileEvidenceStore {
 	}
 
 	readRun(runId: string): CommandRun {
-		return JSON.parse(this.readEvidence(runId, "metadata")) as CommandRun;
+		// M1: parse-then-validate. A wrong-shape metadata.json (older Mira
+		// version, partial write that landed between two valid braces) used
+		// to flow through `as CommandRun` and propagate to callers as a
+		// CommandRun with missing fields. The schema check makes the
+		// integrity failure loud at the boundary rather than silently
+		// poisoning downstream consumers.
+		return commandRunSchema.parse(
+			JSON.parse(this.readEvidence(runId, "metadata")),
+		);
 	}
 
 	runDir(runId: string): string {

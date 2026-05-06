@@ -1,30 +1,16 @@
 import { z } from "zod";
 
 import type { CommandRun } from "./command-run.ts";
+import { evidenceRefSchema } from "./evidence.ts";
+import { findingSchema } from "./finding.ts";
 
 // Runtime shape check for persisted observation.json. The schema mirrors the
 // fields that `buildObservation` produces, so today's writes round-trip
 // unchanged. M1: read paths parse against this schema before returning to
 // agents — a JSON-valid-but-wrong-shape blob is rejected instead of silently
-// surfacing as a `CommandObservation` (audit/05).
-//
-// `findings` is intentionally `z.array(z.unknown())`: V0 only ever writes
-// `[]`, no consumer reads finding internals, and a tighter `Finding` shape
-// would couple this schema to a sub-type that is out of M1's scope.
-const evidenceRefSchema = z.object({
-	path: z.string(),
-	kind: z.enum([
-		"stdout",
-		"stderr",
-		"combined",
-		"metadata",
-		"observation",
-		"context",
-		"other",
-	]),
-	description: z.string().optional(),
-});
-
+// surfacing as a `CommandObservation` (audit/05). Sub-schemas for
+// `EvidenceRef` and `Finding` live with their own types in `evidence.ts` and
+// `finding.ts`.
 export const commandObservationSchema = z.object({
 	id: z.string(),
 	runId: z.string(),
@@ -35,7 +21,7 @@ export const commandObservationSchema = z.object({
 	killedByTimeout: z.boolean(),
 	durationMs: z.number(),
 	summary: z.string(),
-	findings: z.array(z.unknown()),
+	findings: z.array(findingSchema),
 	relatedFiles: z.array(z.string()),
 	suggestedNextActions: z.array(z.string()),
 	verificationHints: z.array(z.string()),

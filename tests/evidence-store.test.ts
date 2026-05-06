@@ -113,6 +113,25 @@ describe("FileEvidenceStore", () => {
 		expect(() => store.readRun("run_nope")).toThrow();
 	});
 
+	test("readRun rejects metadata.json that is JSON-valid but wrong-shape", () => {
+		// Regression for audit M1: a metadata.json that parses (well-formed
+		// JSON) but doesn't match `commandRunSchema` — e.g., an older Mira
+		// version's schema, or a partial write that landed between two valid
+		// braces — used to flow through `as CommandRun` and propagate as a
+		// CommandRun with missing fields. The kernel now throws on shape
+		// mismatch so the MCP boundary maps it to INTERNAL instead of
+		// surfacing a half-built row to the agent.
+		const store = new FileEvidenceStore(projectRoot);
+		const { runId, runDir } = store.createRun();
+		writeFileSync(
+			join(runDir, "metadata.json"),
+			JSON.stringify({ totally: "wrong" }),
+			"utf8",
+		);
+
+		expect(() => store.readRun(runId)).toThrow();
+	});
+
 	test("listRecentObservations returns [] when .mira/runs does not exist yet", () => {
 		const store = new FileEvidenceStore(projectRoot);
 		expect(store.listRecentObservations(10)).toEqual([]);

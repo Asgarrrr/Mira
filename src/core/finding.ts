@@ -1,18 +1,22 @@
-import type { EvidenceRef } from "./evidence.ts";
+import { z } from "zod";
 
-export type EvidenceExcerpt = {
-	ref: EvidenceRef;
-	lineStart?: number;
-	lineEnd?: number;
-	text: string;
-};
+import { evidenceRefSchema } from "./evidence.ts";
 
-export type Finding = {
-	id: string;
-	severity: "info" | "warning" | "error";
-	title: string;
-	description: string;
-	excerpts: EvidenceExcerpt[];
-	evidenceRefs: EvidenceRef[];
-	relatedFiles?: string[];
-};
+export const evidenceExcerptSchema = z.object({
+	ref: evidenceRefSchema,
+	lineStart: z.number().optional(),
+	lineEnd: z.number().optional(),
+	text: z.string(),
+});
+export type EvidenceExcerpt = z.infer<typeof evidenceExcerptSchema>;
+
+export const findingSchema = z.object({
+	id: z.string(),
+	severity: z.enum(["info", "warning", "error"]),
+	title: z.string(),
+	description: z.string(),
+	excerpts: z.array(evidenceExcerptSchema),
+	evidenceRefs: z.array(evidenceRefSchema),
+	relatedFiles: z.array(z.string()).optional(),
+});
+export type Finding = z.infer<typeof findingSchema>;

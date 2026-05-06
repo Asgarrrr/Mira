@@ -7,7 +7,7 @@ import {
 	type CommandObservation,
 	commandObservationSchema,
 } from "../../core/command-observation.ts";
-import type { CommandRun } from "../../core/command-run.ts";
+import { type CommandRun, commandRunSchema } from "../../core/command-run.ts";
 import { miraError } from "../errors.ts";
 import { validateProjectRoot } from "../project-root.ts";
 
@@ -95,7 +95,7 @@ export async function runListRecentRunsTool(
 		}
 		let run: CommandRun;
 		try {
-			run = JSON.parse(readFileSync(metaPath, "utf8")) as CommandRun;
+			run = commandRunSchema.parse(JSON.parse(readFileSync(metaPath, "utf8")));
 		} catch (e) {
 			const message = e instanceof Error ? e.message : String(e);
 			throw miraError("INTERNAL", `failed to read run ${id}: ${message}`);
