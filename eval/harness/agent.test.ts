@@ -9,6 +9,7 @@ const CONFIG: AgentConfig = {
 	model: "claude-test-model",
 	temperature: 0,
 	maxTurns: 5,
+	maxTokensPerTurn: 8192,
 	tokenCap: 200_000,
 	wallClockCapMs: 60_000,
 	bashTimeoutMs: 5_000,

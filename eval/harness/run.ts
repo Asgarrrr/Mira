@@ -27,6 +27,7 @@ const SMOKE_CONFIG: AgentConfig = {
 	model: "claude-sonnet-4-6",
 	temperature: 0,
 	maxTurns: 5,
+	maxTokensPerTurn: 8192,
 	tokenCap: 200_000,
 	wallClockCapMs: 600_000,
 	bashTimeoutMs: 60_000,

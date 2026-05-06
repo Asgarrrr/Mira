@@ -7,6 +7,7 @@ export type AgentConfig = {
 	model: string;
 	temperature: number;
 	maxTurns: number;
+	maxTokensPerTurn: number;
 	tokenCap: number;
 	wallClockCapMs: number;
 	bashTimeoutMs: number;
