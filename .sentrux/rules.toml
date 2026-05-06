@@ -1,0 +1,142 @@
+# Mira architectural rules — checked by `sentrux check` / `check_rules`.
+#
+# Encodes the dependency invariants of ADR 0005 (architecture sensing,
+# `architecture -> core types` only) and ADR 0006 (MCP boundary,
+# `mcp -> kernels -> core types`, never the inverse, and `cli` and
+# `mcp` are peer boundaries that must not import each other).
+#
+# Sentrux convention (see sentrux-core/src/metrics/rules/mod.rs,
+# `check_layers`): a layer at order N may import only from layers at
+# order >= N. An edge with from_ord > to_ord is a `layer_direction`
+# violation. So HIGHER `order` = MORE FOUNDATIONAL (depended on by
+# more layers); LOWER `order` = TOP OF STACK (depends on more layers).
+# This is the inverse of the natural-language reading of the example
+# in the sentrux README; see docs/eval/01-sentrux-rules.md § Resolution
+# for the full reconciliation.
+
+[constraints]
+max_cycles = 0           # No circular dependencies allowed.
+
+# ── Layers ─────────────────────────────────────────────────────────
+# Order rationale (Mira's dep DAG, sentrux's inverted scale):
+#   core (6)              — pure types, depended on by every other layer
+#   store / arch / render — depend on core only; peers at order 5
+#   command (4)           — depends on core, store
+#   context (3)           — depends on core, store, architecture
+#   cli / mcp (1)         — boundaries; depend on the kernels above
+
+[[layers]]
+name = "core"
+paths = ["src/core/**/*"]
+order = 6
+
+[[layers]]
+name = "store"
+paths = ["src/store/**/*"]
+order = 5
+
+[[layers]]
+name = "architecture"
+paths = ["src/architecture/**/*"]
+order = 5
+
+[[layers]]
+name = "render"
+paths = ["src/render/**/*"]
+order = 5
+
+[[layers]]
+name = "command"
+paths = ["src/command/**/*"]
+order = 4
+
+[[layers]]
+name = "context"
+paths = ["src/context/**/*"]
+order = 3
+
+[[layers]]
+name = "cli"
+paths = ["src/cli/**/*"]
+order = 1
+
+[[layers]]
+name = "mcp"
+paths = ["src/mcp/**/*"]
+order = 1
+
+# ── Boundaries ─────────────────────────────────────────────────────
+# `[[layers]]` covers downward leaks (a higher-order layer importing a
+# lower-order one). It does NOT cover same-order peers nor "permitted by
+# order, forbidden by ADR" edges. Every boundary below names an ADR-
+# specific forbidden edge that the layer ordering alone cannot reach.
+
+# store / architecture / render are peers at order 5 — none may import
+# the other two (each depends on core only).
+[[boundaries]]
+from = "src/architecture/**/*"
+to = "src/store/**/*"
+reason = "ADR 0005: architecture imports only from core."
+
+[[boundaries]]
+from = "src/architecture/**/*"
+to = "src/render/**/*"
+reason = "ADR 0005: architecture imports only from core."
+
+[[boundaries]]
+from = "src/store/**/*"
+to = "src/architecture/**/*"
+reason = "ADR 0001: store imports only from core."
+
+[[boundaries]]
+from = "src/store/**/*"
+to = "src/render/**/*"
+reason = "ADR 0001: store imports only from core."
+
+[[boundaries]]
+from = "src/render/**/*"
+to = "src/store/**/*"
+reason = "render is presentation; depends only on core types."
+
+[[boundaries]]
+from = "src/render/**/*"
+to = "src/architecture/**/*"
+reason = "render is presentation; depends only on core types."
+
+# command may import core and store only (ADR 0006 dep direction).
+[[boundaries]]
+from = "src/command/**/*"
+to = "src/architecture/**/*"
+reason = "ADR 0006: command imports only core and store."
+
+[[boundaries]]
+from = "src/command/**/*"
+to = "src/render/**/*"
+reason = "ADR 0006: command imports only core and store."
+
+# context may import core, architecture, store (ADR 0006).
+[[boundaries]]
+from = "src/context/**/*"
+to = "src/command/**/*"
+reason = "ADR 0006: context imports only core, architecture, store."
+
+[[boundaries]]
+from = "src/context/**/*"
+to = "src/render/**/*"
+reason = "ADR 0006: context imports only core, architecture, store."
+
+# mcp must not import cli. This guards the regression fixed in PR #21
+# (markdown renderers were under src/cli/ and consumed by src/mcp/tools/;
+# they now live in src/render/, breaking the reverse dependency).
+#
+# The opposite direction (cli -> mcp) is NOT forbidden: src/cli/index.ts
+# is the binary entry / composition root and dispatches `mira mcp` to
+# the stdio server. As Mira moves toward an invisible hook-based posture
+# (commands intercepted via Claude Code PreToolUse hooks rather than
+# `mira run`), the CLI surface shrinks toward "launch the mcp server",
+# and a synthetic `bin/` extraction layer would be deck-rearranging.
+# See docs/eval/01-sentrux-rules.md § Resolution for the full reasoning.
+[[boundaries]]
+from = "src/mcp/**/*"
+to = "src/cli/**/*"
+reason = "ADR 0006: mcp is a boundary; no other layer (including cli) may be imported by mcp. The CLI bin entry may compose mcp; the inverse leaks the SDK."
