@@ -1,0 +1,6 @@
+diff --git a/src/foo.txt b/src/foo.txt
+--- a/src/foo.txt
++++ b/src/foo.txt
+@@ -1 +1 @@
+-fixed
++buggy
