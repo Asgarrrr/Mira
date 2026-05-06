@@ -151,9 +151,8 @@ describe("get_raw_evidence tool", () => {
 	});
 
 	test("INVALID_INPUT when ref.path is longer than the OS path limit (ENAMETOOLONG)", async () => {
-		// 10k chars is well past the ~1 KB OS limit on Darwin/Linux. The catch
-		// block must map ENAMETOOLONG to INVALID_INPUT, not INTERNAL — see ADR
-		// 0006 § Error model and audit/08-L2-error-mapping.md.
+		// ADR 0006 § Error model: ENAMETOOLONG is a malformed input, not a bug —
+		// `INTERNAL` would mislead clients that branch on `code`.
 		const longSegment = "a".repeat(10_000);
 		try {
 			await runGetRawEvidenceTool({
