@@ -207,6 +207,61 @@ describe("FileEvidenceStore", () => {
 		expect(recent.map((o) => o.id)).not.toContain(runId);
 	});
 
+	test("listRecentObservations skips run dirs whose observation.json is malformed JSON", () => {
+		// Regression for audit H2: one corrupt observation.json (interrupted
+		// write, OOM mid-flush, disk full) used to throw out of the loop and
+		// poison the entire projection — list_recent_runs and
+		// generate_context_pack returned INTERNAL even when other healthy runs
+		// existed. The fix treats a parse error the same as a missing file.
+		const store = new FileEvidenceStore(projectRoot);
+		const runsRoot = join(projectRoot, ".mira", "runs");
+		const ids = [
+			"run_20260505T143010000Z_a00001",
+			"run_20260505T143020000Z_a00002",
+			"run_20260505T143030000Z_a00003",
+		];
+
+		for (const id of ids) {
+			const dir = join(runsRoot, id);
+			mkdirSync(dir, { recursive: true });
+			const observation: CommandObservation = {
+				id,
+				runId: id,
+				command: `echo ${id}`,
+				status: "success",
+				exitCode: 0,
+				killedByTimeout: false,
+				durationMs: 1,
+				summary: `\`echo ${id}\` exited with code 0 in 1ms`,
+				findings: [],
+				relatedFiles: [],
+				suggestedNextActions: [],
+				verificationHints: [],
+				evidenceRefs: [],
+			};
+			writeFileSync(
+				join(dir, "observation.json"),
+				`${JSON.stringify(observation, null, 2)}\n`,
+				"utf8",
+			);
+		}
+
+		const corruptId = ids[1] as string;
+		writeFileSync(
+			join(runsRoot, corruptId, "observation.json"),
+			"{this is not json,,,",
+			"utf8",
+		);
+
+		const recent = store.listRecentObservations(10);
+		const recentIds = recent.map((o) => o.id);
+		const expectedIds = [...ids].reverse().filter((id) => id !== corruptId);
+
+		expect(recent.length).toBe(2);
+		expect(recentIds).not.toContain(corruptId);
+		expect(recentIds).toEqual(expectedIds);
+	});
+
 	test("listRecentObservations keeps scanning past corrupt dirs to fill the limit", () => {
 		// Regression: a corrupt run dir at the top of the sort must not shrink the
 		// result below `limit` when more valid observations exist behind it.

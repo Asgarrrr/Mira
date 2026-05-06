@@ -92,8 +92,11 @@ export class FileEvidenceStore {
 
 	listRecentObservations(limit: number): CommandObservation[] {
 		if (!existsSync(this.runsDir)) return [];
-		// Walk newest-first and skip dirs that have no observation.json (e.g. a
-		// run that crashed before the observation was written). We must filter
+		// Walk newest-first and skip dirs whose observation.json is missing or
+		// unreadable (missing file, partial write, malformed JSON, race between
+		// existsSync and readFileSync). One corrupt entry must not poison the
+		// projection — `get_observation(id)` still surfaces the parse error
+		// per-row (single-target read → single-target failure). We must filter
 		// *while* iterating, not after slicing: a corrupt dir at the top of the
 		// sort would otherwise shrink the result below `limit` even when more
 		// valid observations exist behind it.
@@ -103,9 +106,15 @@ export class FileEvidenceStore {
 			if (observations.length >= limit) break;
 			const path = join(this.runsDir, runId, FILENAMES.observation_json);
 			if (!existsSync(path)) continue;
-			observations.push(
-				JSON.parse(readFileSync(path, "utf8")) as CommandObservation,
-			);
+			let observation: CommandObservation;
+			try {
+				observation = JSON.parse(
+					readFileSync(path, "utf8"),
+				) as CommandObservation;
+			} catch {
+				continue;
+			}
+			observations.push(observation);
 		}
 		return observations;
 	}
