@@ -67,5 +67,10 @@ export type TranscriptEvent =
 			toolCalls: number;
 			toolCallsByName: Record<string, number>;
 			wallClockMs: number;
-			stopReason: "model_end" | "max_turns" | "token_cap" | "wall_clock_cap";
+			stopReason:
+				| "model_end"
+				| "max_turns"
+				| "token_cap"
+				| "wall_clock_cap"
+				| "max_tokens_truncated";
 	  };

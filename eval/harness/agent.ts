@@ -28,7 +28,12 @@ function preview(s: string): string {
 
 export type RunResult = {
 	success: boolean;
-	stopReason: "model_end" | "max_turns" | "token_cap" | "wall_clock_cap";
+	stopReason:
+		| "model_end"
+		| "max_turns"
+		| "token_cap"
+		| "wall_clock_cap"
+		| "max_tokens_truncated";
 	turns: number;
 	tokensInput: number;
 	tokensOutput: number;
@@ -46,15 +51,23 @@ export type RunAgentArgs = {
 	config: AgentConfig;
 	emit: (event: TranscriptEvent) => void;
 	successCheck?: () => Promise<boolean>;
+	// Optional injection point. Default: a real Anthropic client built from
+	// process.env.ANTHROPIC_API_KEY. Tests pass a mock here.
+	client?: Anthropic;
 };
 
 export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
 	const { scenario, mode, workdir, task, tools, config, emit, successCheck } =
 		args;
 
-	const apiKey = process.env.ANTHROPIC_API_KEY;
-	if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set");
-	const client = new Anthropic({ apiKey });
+	let client: Anthropic;
+	if (args.client) {
+		client = args.client;
+	} else {
+		const apiKey = process.env.ANTHROPIC_API_KEY;
+		if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set");
+		client = new Anthropic({ apiKey });
+	}
 
 	const anthropicTools: Tool[] = tools.map((t) => ({
 		name: t.name,
@@ -123,6 +136,12 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
 		});
 
 		messages.push({ role: "assistant", content: response.content });
+
+		// A trailing tool_use may be partially serialized — never execute it.
+		if (response.stop_reason === "max_tokens") {
+			stopReason = "max_tokens_truncated";
+			break;
+		}
 
 		const toolUses: ToolUseBlock[] = response.content.filter(
 			(b: ContentBlock): b is ToolUseBlock => b.type === "tool_use",
