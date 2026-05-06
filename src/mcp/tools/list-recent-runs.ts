@@ -74,12 +74,21 @@ export async function runListRecentRunsTool(
 		const metaPath = join(runsDir, id, "metadata.json");
 		if (!existsSync(obsPath) || !existsSync(metaPath)) continue;
 
+		// H2: a malformed observation.json is treated like a missing file —
+		// skip the row instead of poisoning the whole projection. The
+		// metadata.json parse keeps its INTERNAL semantics: the row would
+		// expose `startedAt` from metadata, and we can't fabricate it. A
+		// missing-or-corrupt metadata is a genuine integrity issue.
 		let observation: CommandObservation;
-		let run: CommandRun;
 		try {
 			observation = JSON.parse(
 				readFileSync(obsPath, "utf8"),
 			) as CommandObservation;
+		} catch {
+			continue;
+		}
+		let run: CommandRun;
+		try {
 			run = JSON.parse(readFileSync(metaPath, "utf8")) as CommandRun;
 		} catch (e) {
 			const message = e instanceof Error ? e.message : String(e);

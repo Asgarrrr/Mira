@@ -198,6 +198,36 @@ describe("list_recent_runs tool", () => {
 		}
 	});
 
+	test("skips runs whose observation.json is malformed JSON (does not poison the list)", async () => {
+		// Regression for audit H2: a single corrupt observation.json used to
+		// throw INTERNAL out of the loop and drop the entire response, even
+		// when other healthy runs existed. The fix treats a parse error the
+		// same as a missing file. The metadata.json case stays strict — see
+		// the next test.
+		const ids = [
+			"run_20260505T143010000Z_a00001",
+			"run_20260505T143020000Z_a00002",
+			"run_20260505T143030000Z_a00003",
+		];
+		for (const id of ids) seedRun(projectRoot, id);
+
+		const corruptId = ids[1] as string;
+		writeFileSync(
+			join(projectRoot, ".mira", "runs", corruptId, "observation.json"),
+			"{this is not json,,,",
+			"utf8",
+		);
+
+		const result = await runListRecentRunsTool({ projectRoot });
+		const returnedIds = result.runs.map((r) => r.id);
+
+		expect(result.runs.length).toBe(2);
+		expect(returnedIds).not.toContain(corruptId);
+		expect(returnedIds).toEqual(
+			[...ids].reverse().filter((id) => id !== corruptId),
+		);
+	});
+
 	test("INTERNAL on malformed metadata.json", async () => {
 		const id = "run_20260505T143030000Z_bad";
 		seedRun(projectRoot, id);
