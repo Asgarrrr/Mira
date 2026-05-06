@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { execSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -131,5 +132,47 @@ describe("CommandObserver", () => {
 		expect(run.exitCode).toBe(0);
 		expect(run.killedByTimeout).toBe(false);
 		expect(run.signal).toBeUndefined();
+	});
+
+	// Regression for audit H1: when sh's descendants inherit our pipes (subshell
+	// background, fork-and-wait), killing only sh leaves the descendants holding
+	// stdout/stderr open — observe() blocked for the descendant's lifetime instead
+	// of returning at timeoutMs. The fix spawns sh as a process-group leader and
+	// group-kills on timeout. See audit/01-H1-timeout-orphans.md.
+	test("kills orphan descendants on timeout via process group", async () => {
+		if (process.platform === "win32") return;
+
+		// Unique sleep duration so a precise ps check can't collide with
+		// concurrent test runs or stragglers from earlier sessions.
+		const sleepDuration = String(5000 + (process.pid % 1000));
+		const psPattern = new RegExp(`\\bsleep ${sleepDuration}(\\s|$)`);
+		const store = new FileEvidenceStore(projectRoot);
+		const observer = new CommandObserver(store, 200);
+
+		try {
+			const start = Date.now();
+			const { stdout } = await observer.observe(
+				`(sleep ${sleepDuration} &); echo orphan`,
+				projectRoot,
+			);
+			const elapsed = Date.now() - start;
+
+			expect(elapsed).toBeLessThan(500);
+			expect(stdout).toContain("orphan");
+
+			const psOut = execSync("ps -ax -o pid,command", {
+				encoding: "utf8",
+			});
+			const survivors = psOut
+				.split("\n")
+				.filter((line) => psPattern.test(line));
+			expect(survivors).toEqual([]);
+		} finally {
+			// Defensive cleanup if the fix regresses — never leak a multi-thousand-second
+			// sleep onto the user's machine. -9 because sleep ignores SIGTERM cleanup.
+			try {
+				execSync(`pkill -9 -f 'sleep ${sleepDuration}' 2>/dev/null || true`);
+			} catch {}
+		}
 	});
 });
