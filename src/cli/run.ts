@@ -1,7 +1,7 @@
 import { CommandObserver } from "../command/command-observer.ts";
 import { buildObservation } from "../core/command-observation.ts";
+import { renderObservationMd } from "../render/render-observation.ts";
 import { FileEvidenceStore } from "../store/evidence-store.ts";
-import { renderObservationMd } from "./render-observation.ts";
 
 export async function runCommand(args: string[]): Promise<number> {
 	const command = args.join(" ").trim();

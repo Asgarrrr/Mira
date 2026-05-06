@@ -2,8 +2,8 @@ import { dirname } from "node:path";
 
 import { senseArchitecture } from "../architecture/sense.ts";
 import { buildContextPack } from "../context/context-pack-generator.ts";
+import { renderContextMd } from "../render/render-context.ts";
 import { FileEvidenceStore } from "../store/evidence-store.ts";
-import { renderContextMd } from "./render-context.ts";
 
 const MAX_OBSERVATIONS = 10;
 

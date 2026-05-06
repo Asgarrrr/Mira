@@ -3,9 +3,9 @@ import { dirname } from "node:path";
 import { z } from "zod";
 
 import { senseArchitecture } from "../../architecture/sense.ts";
-import { renderContextMd } from "../../cli/render-context.ts";
 import { buildContextPack } from "../../context/context-pack-generator.ts";
 import type { ContextPack } from "../../core/context-pack.ts";
+import { renderContextMd } from "../../render/render-context.ts";
 import { FileEvidenceStore } from "../../store/evidence-store.ts";
 import { miraError } from "../errors.ts";
 import { validateProjectRoot } from "../project-root.ts";
