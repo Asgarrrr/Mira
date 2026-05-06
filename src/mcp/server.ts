@@ -84,7 +84,7 @@ export function createMiraMcpServer(): McpServer {
 		{
 			title: "Get raw evidence by reference",
 			description:
-				"Read the raw bytes of a stored evidence file referenced by an existing EvidenceRef. ref.path is resolved against <projectRoot>/.mira/; traversal, out-of-tree absolute paths, and symlinks that escape the evidence root are rejected before any read. Returned verbatim — never truncated, summarized, or re-encoded.",
+				"Read the text content of a stored evidence file referenced by an existing EvidenceRef. ref.path is resolved against <projectRoot>/.mira/; traversal, out-of-tree absolute paths, and symlinks that escape the evidence root are rejected before any read. Files are decoded as UTF-8; invalid sequences are replaced with U+FFFD. V0 evidence kinds are all text (stdout/stderr/observation/etc.); extending this contract to binary evidence requires a new ADR. Mira does not truncate or summarize the file at this boundary.",
 			inputSchema: getRawEvidenceInputShape,
 		},
 		async (input) => {

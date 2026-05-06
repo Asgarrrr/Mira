@@ -250,7 +250,7 @@ Responsibilities:
 Non-responsibilities:
 
 * no new kernel, no new core type, no new persisted artifact
-* no re-encoding, truncation, or summarization of `CommandObservation` or raw evidence
+* no truncation or summarization of `CommandObservation` or raw evidence (raw evidence is decoded UTF-8 with `U+FFFD` substitution; V0 evidence kinds are text-only — see ADR 0006 § `get_raw_evidence`)
 * no re-pagination or extension of `ContextPack.suspectedFiles` (the cap of 20 is enforced by the Context Kernel; ADR 0005)
 * no exposure of `ArchitectureSignal[]` outside the `generate_context_pack` pack projection
 * no plugin layer — clients cannot register new tools; the five tools are hard-coded
