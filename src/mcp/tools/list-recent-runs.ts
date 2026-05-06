@@ -3,7 +3,10 @@ import { join } from "node:path";
 
 import { z } from "zod";
 
-import type { CommandObservation } from "../../core/command-observation.ts";
+import {
+	type CommandObservation,
+	commandObservationSchema,
+} from "../../core/command-observation.ts";
 import type { CommandRun } from "../../core/command-run.ts";
 import { miraError } from "../errors.ts";
 import { validateProjectRoot } from "../project-root.ts";
@@ -74,16 +77,19 @@ export async function runListRecentRunsTool(
 		const metaPath = join(runsDir, id, "metadata.json");
 		if (!existsSync(obsPath) || !existsSync(metaPath)) continue;
 
-		// H2: a malformed observation.json is treated like a missing file —
-		// skip the row instead of poisoning the whole projection. The
-		// metadata.json parse keeps its INTERNAL semantics: the row would
-		// expose `startedAt` from metadata, and we can't fabricate it. A
-		// missing-or-corrupt metadata is a genuine integrity issue.
+		// H2 / M1: a malformed-or-wrong-shape observation.json is treated like
+		// a missing file — skip the row instead of poisoning the whole
+		// projection. JSON.parse covers the parse-throw case (H2);
+		// `commandObservationSchema.parse` covers the JSON-valid-but-wrong-
+		// shape case (M1, audit/05). The metadata.json parse keeps its
+		// INTERNAL semantics: the row would expose `startedAt` from metadata,
+		// and we can't fabricate it. A missing-or-corrupt metadata is a
+		// genuine integrity issue.
 		let observation: CommandObservation;
 		try {
-			observation = JSON.parse(
-				readFileSync(obsPath, "utf8"),
-			) as CommandObservation;
+			observation = commandObservationSchema.parse(
+				JSON.parse(readFileSync(obsPath, "utf8")),
+			);
 		} catch {
 			continue;
 		}

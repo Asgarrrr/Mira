@@ -7,7 +7,10 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 
-import type { CommandObservation } from "../core/command-observation.ts";
+import {
+	type CommandObservation,
+	commandObservationSchema,
+} from "../core/command-observation.ts";
 import type { CommandRun } from "../core/command-run.ts";
 import type { ContextPack } from "../core/context-pack.ts";
 import { generateContextId, generateRunId } from "../core/ids.ts";
@@ -92,14 +95,14 @@ export class FileEvidenceStore {
 
 	listRecentObservations(limit: number): CommandObservation[] {
 		if (!existsSync(this.runsDir)) return [];
-		// Walk newest-first and skip dirs whose observation.json is missing or
-		// unreadable (missing file, partial write, malformed JSON, race between
-		// existsSync and readFileSync). One corrupt entry must not poison the
-		// projection — `get_observation(id)` still surfaces the parse error
-		// per-row (single-target read → single-target failure). We must filter
-		// *while* iterating, not after slicing: a corrupt dir at the top of the
-		// sort would otherwise shrink the result below `limit` even when more
-		// valid observations exist behind it.
+		// Walk newest-first and skip dirs whose observation.json is missing,
+		// unreadable, malformed JSON (H2), or JSON-valid-but-wrong-shape (M1,
+		// audit/05). One corrupt entry must not poison the projection —
+		// `get_observation(id)` still surfaces the failure per-row
+		// (single-target read → single-target failure). We must filter
+		// *while* iterating, not after slicing: a corrupt dir at the top of
+		// the sort would otherwise shrink the result below `limit` even when
+		// more valid observations exist behind it.
 		const observations: CommandObservation[] = [];
 		const entries = readdirSync(this.runsDir).sort().reverse();
 		for (const runId of entries) {
@@ -108,9 +111,9 @@ export class FileEvidenceStore {
 			if (!existsSync(path)) continue;
 			let observation: CommandObservation;
 			try {
-				observation = JSON.parse(
-					readFileSync(path, "utf8"),
-				) as CommandObservation;
+				observation = commandObservationSchema.parse(
+					JSON.parse(readFileSync(path, "utf8")),
+				);
 			} catch {
 				continue;
 			}
