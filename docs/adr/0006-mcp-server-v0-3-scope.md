@@ -118,14 +118,15 @@ type GetRawEvidenceInput = {
 type GetRawEvidenceOutput = {
   ref: EvidenceRef
   bytes: number
-  content: string                                       // utf-8 text; raw evidence files are human-readable (architecture.md)
+  content: string                                       // file decoded as UTF-8; invalid sequences become U+FFFD. V0 evidence is text-only (architecture.md)
 }
 ```
 
 Behaviour:
 
 - `ref.path` is resolved against `<projectRoot>/.mira/`. Any resolved path that escapes `<projectRoot>/.mira/` (path traversal, absolute paths, symlinks pointing outside) is rejected before any read.
-- The file is returned verbatim. Mira does not truncate, summarize, or re-encode raw evidence at this boundary (ADR 0001 invariant: "raw evidence must remain accessible").
+- The file is read as UTF-8 text and surfaced as `content: string`. Invalid UTF-8 sequences are replaced with `U+FFFD` per the platform's `readFileSync(_, "utf8")` semantics. `bytes` always reports the on-disk size.
+- This contract is sufficient for V0 evidence kinds (`stdout`, `stderr`, `combined`, `metadata`, `observation`, `context`, `other`), which are all produced from `TextDecoder`-decoded shell output and are therefore already text on disk. Extending this tool to binary evidence (e.g. screenshots, packed coverage) requires a new ADR — for instance an `encoding: "utf8" | "base64"` field on `GetRawEvidenceOutput`. ADR 0001's "raw evidence must remain accessible" is honored because the underlying file is untouched on disk; the boundary does not truncate or summarize.
 
 MCP errors:
 
@@ -220,7 +221,7 @@ Every tool that touches a project (all five) requires an explicit absolute `proj
 
 ## Invariants (V0.3-specific)
 
-- Raw evidence remains on disk and is returned verbatim by `get_raw_evidence`. The boundary never re-encodes, truncates, or summarizes raw evidence (ADR 0001).
+- Raw evidence remains untouched on disk. `get_raw_evidence` reads the file as UTF-8 text (invalid sequences replaced with `U+FFFD`); it does not truncate or summarize. This is sufficient for V0's text-only evidence kinds — a binary evidence kind would require a new ADR extending the contract (ADR 0001).
 - No tool re-encodes `CommandObservation`. `run_command` and `get_observation` return the existing type as-is. `list_recent_runs` returns a slim projection of fields already present on `CommandObservation`/`CommandRun` — it introduces no new field.
 - `ContextPack.suspectedFiles` is projected and capped by the Context Kernel per ADR 0005. `generate_context_pack` does not re-paginate or extend the cap of 20.
 - `ArchitectureSignal[]` is not exposed outside `generate_context_pack`'s pack projection (ADR 0005).
