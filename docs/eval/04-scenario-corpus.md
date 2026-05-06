@@ -12,13 +12,13 @@ A repository contains a single failing test. Task: make it pass without breaking
 
 **Why this archetype is most informative for V0.3:** it exercises the Command Kernel (run the test) and the Context Kernel + Architecture sensing (find the right file). Two of the five tools are naturally relevant.
 
-### B. Investigation task
+### B. Investigation under verbose output
 
-A repository has a runtime error in a script. Task: explain the root cause in 3 sentences.
+A repository emits a structurally large failure (many TS errors, many test failures, a stack trace + log dump). Task: diagnose and fix.
 
-**Mira hypothesis:** `run_command` followed by `get_observation` returns a structured failure with evidence pointers, instead of forcing the agent to parse stdout/stderr in-prompt.
+**Mira hypothesis (refined per `02-thesis-and-metrics.md`):** `run_command` returns a structured `CommandObservation` with a generic one-line summary and an `EvidenceRef` to the raw output on disk. The agent decides whether to fetch the raw output (`get_raw_evidence`) or proceed with what the structure already tells it (exit code, command, evidence pointers). In baseline mode the full output is in-prompt by default, no choice. The win is *agent autonomy over retrieval*, not active summarization.
 
-**Why interesting:** isolates Command Kernel + summarizer. If Mira doesn't help here, the summarizer needs work.
+**Where the gap should be largest:** when a single root cause produces N>>1 cascading failures — the agent only needs to read a handful of errors, not all of them, to find the root cause. Mira mode lets it stop reading; baseline mode delivers the wall.
 
 ### C. Code locality task
 
@@ -36,9 +36,9 @@ A pure logic task that doesn't require codebase context. Example: "implement a f
 
 **Why crucial:** if Mira "wins" here, the experiment has a confounder — probably token accounting or task ambiguity.
 
-## First-experiment scenarios (all archetype A)
+## First-experiment scenarios (3× archetype A + 1× archetype B)
 
-The first experiment focuses on archetype A only. Three scenarios, all synthetic on Mira itself. We have ground truth (the original commit), automated success checks (existing tests), and a tight feedback loop.
+Four scenarios, all synthetic on Mira itself. Ground truth = the original commit; automated success checks = existing tests (or `bun run typecheck`). Three archetype A scenarios calibrate the harness on small bug-fix tasks where Mira's gain should be modest. One archetype B scenario (B1) probes the place where Mira's *structural* opt-in advantage should be largest — a single root cause producing many cascading failures.
 
 ### A1 — `parse-porcelain-rename`
 
@@ -87,6 +87,28 @@ const verb = run.exitCode === 0 ? "failed" : "exited";
 
 **Success script:** `bun test tests/command-observation.test.ts` exits 0.
 
+### B1 — `verbose-typescript-failure`
+
+**Bug to introduce:** in `src/core/command-observation.ts`, change the field declaration on `CommandObservation`:
+
+```ts
+// BEFORE (correct)
+evidenceRefs: EvidenceRef[];
+
+// AFTER (buggy)
+evidenceRefs: EvidenceRef;
+```
+
+A 4-character delete (`[]`). The cascade is large: every consumer of `obs.evidenceRefs.find(...)`, `for (const ref of obs.evidenceRefs)`, the array literal in `buildObservation`, every test snapshot constructing a `CommandObservation`, and every MCP tool returning one. `bun run typecheck` produces dozens of errors across `src/` and `tests/`.
+
+**Why this exact bug:** a single root cause (the wrong type) producing many surface symptoms is exactly the shape where Mira's "raw evidence is opt-in" framing should pay off. The agent doesn't need to read every error to find the root cause — it needs to read a handful, recognize the type-shape problem, and fix the type. In baseline mode all errors flow into the prompt; in Mira mode the agent gets a structured observation and chooses how much detail to pull.
+
+**Task description (for the agent):** "`bun run typecheck` is failing with many errors. Find the root cause and fix it. Then verify `bun test` is also green."
+
+**Success script:** `bun run typecheck` exits 0 **and** `bun test` exits 0.
+
+**Predicted Mira behavior:** if the agent fetches `get_raw_evidence` of stdout once and stops reading after spotting the type-shape pattern, Mira mode burns far fewer tokens than baseline (where the full typecheck output is unconditional). If the agent reads the entire raw output anyway, Mira mode adds one round trip; result ≈ baseline. The gap is the test of whether opt-in retrieval is exercised.
+
 ## Scenario format
 
 Each scenario directory contains exactly:
@@ -103,7 +125,8 @@ The harness uses `base.patch` (not a frozen tarball) so scenarios drift forward 
 
 ## Out of scope (first experiment)
 
-- Archetypes B / C / D — added in a second experiment once the harness works
-- External-repo scenarios (SWE-bench-lite samples) — same
-- Multi-step tasks (the agent must do A then B) — same
-- Tasks that require running services / databases — same
+- Additional archetype B scenarios beyond B1
+- Archetypes C and D — added in a second experiment once the harness has produced first-round data
+- External-repo scenarios (SWE-bench-lite samples)
+- Multi-step tasks (the agent must do A then B)
+- Tasks that require running services / databases

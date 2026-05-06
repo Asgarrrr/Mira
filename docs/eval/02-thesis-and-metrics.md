@@ -2,14 +2,14 @@
 
 ## The hypothesis under test
 
-> Adding Mira's five MCP tools to an agent's standard toolbelt reduces tokens consumed and increases task success rate on coding tasks where context selection matters, with no regression on tasks where it doesn't.
+> Adding Mira's five MCP tools to an agent's standard toolbelt changes the *default* delivery of raw command output and prior observations from "in-prompt" to "opt-in via a tool call". On scenarios where the agent's reasoning permits skipping some raw fetches — or where prior session evidence is reusable — total tokens consumed drop without hurting success rate.
 
-One falsifiable claim. The eval either supports it or kills it.
+One falsifiable claim, with a refinement that matters: Mira V0's summarizer is a single deterministic generic one-liner. It does **not** actively compress content, it *defers* it. Where Mira wins is in **agent autonomy over retrieval**, not in summarization quality. This is a smaller, more honest claim than "Mira reduces tokens"; it acknowledges that if every query forces a raw fetch, Mira-augmented runs cost baseline + one round trip per fetch.
 
 ## What we are *not* testing
 
 - Whether Mira is faster than RTK or Sentrux on their own primary axes
-- Whether Mira's specific summarizer is optimal
+- Whether Mira's V0 summarizer **actively compresses** content (it doesn't — command-specific summarization is explicitly post-V0)
 - Whether the CLI is ergonomic
 - Whether agents *prefer* Mira (subjective)
 
@@ -49,14 +49,17 @@ For each scenario, compare baseline vs Mira-augmented:
 | **Neutral** | between the two | No effect detected |
 
 Across the corpus:
-- Mira "wins overall" if it wins on ≥2 of 3 first-experiment scenarios
-- Negative-control scenarios (archetype D, designed to be context-insensitive — see [`04-scenario-corpus.md`](./04-scenario-corpus.md)) should produce Neutral verdicts. A Win or Loss on D is a red flag pointing at confounders (token accounting bug, task wording leaks the answer, etc.) — investigate before drawing conclusions about A/B/C.
+- Mira "wins overall" if it wins on ≥3 of 4 first-experiment scenarios (A1 + A2 + A3 + B1)
+- B1 (verbose typescript failure) is the scenario where Mira's structural opt-in advantage *should* be most visible — a clear loss on B1 alone is enough to question the hypothesis even if A1–A3 land neutral
+- Negative-control scenarios (archetype D, designed to be context-insensitive — see [`04-scenario-corpus.md`](./04-scenario-corpus.md)) should produce Neutral verdicts when added in a later experiment. A Win or Loss on D would be a red flag pointing at confounders (token accounting bug, task wording leaks the answer, etc.).
 
 ## Honesty axis
 
 The eval is local and small. Failure modes to flag in every report:
 - N=3 is small; one bad run shifts the median heavily
 - Synthetic scenarios may overfit (we know the answer; the agent might too via over-suggestive task wording)
+- The hypothesis depends on the agent **choosing** to skip raw fetches when the structured observation is enough; if Sonnet 4.6 always fetches everything by default, Mira's opt-in advantage doesn't manifest on a single-shot task and only surfaces on multi-turn re-investigation
+- A1–A3 run on Mira's own 24-file codebase, where context-selection has little room to differentiate; expect modest gaps. B1 has more headroom because the typecheck output is structurally large
 - Anthropic SDK token accounting may not match what users see in production tools (cache reads, e.g.)
 - The harness is the test instrument; if it's wrong, every result is wrong
 
