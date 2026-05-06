@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { join } from "node:path";
 
 import type { CommandRun } from "../core/command-run.ts";
@@ -20,45 +21,66 @@ export class CommandObserver {
 		const startedAt = new Date().toISOString();
 		const start = Date.now();
 
-		const proc = Bun.spawn(["sh", "-c", command], {
+		// `detached: true` makes the child the leader of a new POSIX process
+		// group (setsid), so we can group-kill its descendants on timeout via
+		// `process.kill(-pid, ...)`. Bun.spawn does not expose this today, so
+		// we reach for `node:child_process` here. See ADR 0001 (300s timeout
+		// invariant) and audit/01-H1-timeout-orphans.md for the failure mode
+		// this guards against (sh fork-and-wait, double-fork orphans).
+		const proc = spawn("sh", ["-c", command], {
 			cwd,
-			stdout: "pipe",
-			stderr: "pipe",
+			stdio: ["ignore", "pipe", "pipe"],
+			detached: true,
 		});
 
 		let stdoutBuf = "";
 		let stderrBuf = "";
 		let combinedBuf = "";
 		let killedByTimeout = false;
-		let completed = false;
 
-		const timer = setTimeout(() => {
-			if (completed) return;
-			killedByTimeout = true;
-			proc.kill("SIGKILL");
-		}, this.timeoutMs);
-
-		const exitedSentinel = proc.exited.then(() => {
-			completed = true;
+		proc.stdout?.on("data", (chunk: Buffer) => {
+			const text = chunk.toString("utf8");
+			stdoutBuf += text;
+			combinedBuf += text;
+		});
+		proc.stderr?.on("data", (chunk: Buffer) => {
+			const text = chunk.toString("utf8");
+			stderrBuf += text;
+			combinedBuf += text;
 		});
 
-		await Promise.all([
-			pump(proc.stdout, (chunk) => {
-				stdoutBuf += chunk;
-				combinedBuf += chunk;
-			}),
-			pump(proc.stderr, (chunk) => {
-				stderrBuf += chunk;
-				combinedBuf += chunk;
-			}),
-			exitedSentinel,
-		]);
+		const closed = new Promise<{
+			code: number | null;
+			signal: NodeJS.Signals | null;
+		}>((resolve, reject) => {
+			proc.once("close", (code, signal) => resolve({ code, signal }));
+			proc.once("error", reject);
+		});
 
+		const timer = setTimeout(() => {
+			const procAlive = proc.exitCode === null && proc.signalCode === null;
+			if (procAlive) killedByTimeout = true;
+			if (proc.pid !== undefined) {
+				try {
+					process.kill(-proc.pid, "SIGKILL");
+				} catch {
+					try {
+						proc.kill("SIGKILL");
+					} catch {}
+				}
+			}
+			// Belt-and-suspenders: drop our end of the pipes so `close` fires
+			// even if a descendant somehow survives the group-kill.
+			proc.stdout?.destroy();
+			proc.stderr?.destroy();
+		}, this.timeoutMs);
+
+		const { code, signal } = await closed;
 		clearTimeout(timer);
 
 		const durationMs = Date.now() - start;
-		const exitCode = proc.exitCode;
-		const signal = proc.signalCode ?? undefined;
+		const exitCode = code;
+		const signalName = signal ?? undefined;
 
 		this.store.writeStdout(runId, stdoutBuf);
 		this.store.writeStderr(runId, stderrBuf);
@@ -71,7 +93,7 @@ export class CommandObserver {
 			startedAt,
 			durationMs,
 			exitCode,
-			...(signal !== undefined ? { signal } : {}),
+			...(signalName !== undefined ? { signal: signalName } : {}),
 			killedByTimeout,
 			stdoutPath: join(runDir, "stdout.log"),
 			stderrPath: join(runDir, "stderr.log"),
@@ -82,24 +104,5 @@ export class CommandObserver {
 		this.store.writeMetadata(runId, run);
 
 		return { run, stdout: stdoutBuf, stderr: stderrBuf };
-	}
-}
-
-async function pump(
-	stream: ReadableStream<Uint8Array>,
-	onChunk: (text: string) => void,
-): Promise<void> {
-	const reader = stream.getReader();
-	const decoder = new TextDecoder();
-	try {
-		while (true) {
-			const { done, value } = await reader.read();
-			if (done) break;
-			if (value) onChunk(decoder.decode(value, { stream: true }));
-		}
-		const tail = decoder.decode();
-		if (tail) onChunk(tail);
-	} finally {
-		reader.releaseLock();
 	}
 }
