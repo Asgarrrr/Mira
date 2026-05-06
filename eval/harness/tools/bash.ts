@@ -1,9 +1,11 @@
 import type { HarnessTool } from "../types.ts";
 
-// Best-effort sandbox: reject any whitespace-separated token that starts with
-// `/` unless it is on the small allowlist. This blocks `cat /etc/passwd` and
-// `cd /` while letting `git status`, `bun test`, `rg foo` through. It is not
-// a security boundary — the agent runs locally and the workdir is mkdtemp'd —
+// Best-effort sandbox: reject any whitespace-separated token that contains
+// `/` unless it begins with `./`/`../` or its absolute portion is on the small
+// allowlist. This blocks `cat /etc/passwd`, `cd /`, `x=/etc/passwd`,
+// `>/tmp/...`, `</etc/passwd` and similar shapes, while letting `git status`,
+// `bun test`, `cat ./tests/foo.ts`, `2>/dev/null` through. It is not a
+// security boundary — the agent runs locally and the workdir is mkdtemp'd —
 // it is a guard against the agent reaching outside the scenario's tree by
 // accident or under prompt drift.
 const ABSOLUTE_PATH_ALLOWLIST = new Set(["/dev/null", "/dev/stdin"]);
@@ -13,9 +15,13 @@ function rejectAbsolutePathTokens(command: string): string | null {
 	for (const token of tokens) {
 		// strip surrounding quotes for matching
 		const stripped = token.replace(/^['"]|['"]$/g, "");
-		if (stripped.startsWith("/") && !ABSOLUTE_PATH_ALLOWLIST.has(stripped)) {
-			return stripped;
-		}
+		if (!stripped.includes("/")) continue;
+		if (stripped.startsWith("./") || stripped.startsWith("../")) continue;
+		// Inspect the absolute portion (from first `/` to end). Allows shapes
+		// like `2>/dev/null` whose path portion is on the allowlist.
+		const pathPortion = stripped.slice(stripped.indexOf("/"));
+		if (ABSOLUTE_PATH_ALLOWLIST.has(pathPortion)) continue;
+		return stripped;
 	}
 	return null;
 }
@@ -23,7 +29,7 @@ function rejectAbsolutePathTokens(command: string): string | null {
 export function makeBashTool(timeoutMs: number): HarnessTool {
 	return {
 		name: "bash",
-		description: `Run a shell command. cwd is the workdir. Absolute paths in the command are rejected (allowlist: /dev/null, /dev/stdin). Hard timeout: ${timeoutMs}ms. Returns "exitCode=<n>\\n--stdout--\\n...\\n--stderr--\\n..." text.`,
+		description: `Run a shell command. cwd is the workdir. Tokens containing "/" are rejected unless they begin with "./" or "../", or their absolute portion is exactly /dev/null or /dev/stdin (so 2>/dev/null is fine). Use relative paths with explicit ./ prefix. Hard timeout: ${timeoutMs}ms. Returns "exitCode=<n>\\n--stdout--\\n...\\n--stderr--\\n..." text.`,
 		inputSchema: {
 			type: "object",
 			properties: {

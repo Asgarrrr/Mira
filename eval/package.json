@@ -5,6 +5,7 @@
 	"description": "Eval harness for Mira. Isolated from src/ runtime: @anthropic-ai/sdk lives here, never in the root package.",
 	"scripts": {
 		"smoke": "bun harness/run.ts smoke",
+		"test:bash-sandbox": "bun harness/tools/bash-sandbox-tests.ts",
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
