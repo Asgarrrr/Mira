@@ -4,16 +4,16 @@
 
 | Knob | Value | Why |
 |---|---|---|
-| Scenarios | A1, A2, A3 (see [`04-scenario-corpus.md`](./04-scenario-corpus.md)) | Tightest archetype, automated success checks, ground truth |
+| Scenarios | A1, A2, A3, B1 (see [`04-scenario-corpus.md`](./04-scenario-corpus.md)) | A1–A3 calibrate on small bug-fix tasks; B1 probes the structural opt-in advantage on a verbose typecheck failure |
 | Modes | `baseline`, `mira` | The two we're comparing |
 | Repeats | 3 | Smallest N that produces a median |
-| Total runs | 3 × 2 × 3 = **18** | |
-| Model | Sonnet 4.6 (default; Opus 4.7 optional) | Cost — 18 Opus runs would multiply the bill ~3× |
+| Total runs | 4 × 2 × 3 = **24** | |
+| Model | Sonnet 4.6 (default; Opus 4.7 optional) | Cost — 24 Opus runs would multiply the bill ~3× |
 | Temperature | 0 | Reduce variance |
 | Max turns / run | 30 | Cap iteration |
 | Token cap / run | 200,000 | Cost guard |
 | Wall-clock cap / run | 600s | Cost guard |
-| Cost ceiling (total) | ~$15 (Sonnet) / ~$45 (Opus) | Estimate; harness aborts if exceeded |
+| Cost ceiling (total) | ~$20 (Sonnet) / ~$60 (Opus) | Estimate; harness aborts if exceeded |
 
 ## Implementation tasks (post-design)
 
@@ -25,7 +25,7 @@ These are sub-tasks for follow-up PRs. *This* PR only writes this design documen
 - Create `eval/harness/agent.ts` with the loop described in [`03-harness-design.md`](./03-harness-design.md)
 - Create the four baseline tool wrappers (`bash`, `read`, `write`, `grep`)
 - Create the Mira MCP wrapper (`mira-mcp.ts`) using `createMiraMcpServer()` and `InMemoryTransport`
-- Smoke test: launch the agent on a trivial in-prompt task ("write hello world to /tmp/hello") in baseline mode, then in mira mode, watch tools fire end-to-end
+- **Smoke test (harness validation only — does NOT test Mira's value):** launch the agent on a trivial in-prompt task ("write 'hello world' to `<workdir>/hello.txt`") in baseline mode, then in mira mode. The smoke test's only purpose is to confirm the agent loop, the tool wrappers, and the MCP forwarding all work end-to-end. It says **nothing** about whether Mira helps an agent do real work — that's what the scenarios in sub-tasks ii–vi are for.
 
 ### Sub-task ii — Scenario format + checker
 
@@ -34,7 +34,7 @@ These are sub-tasks for follow-up PRs. *This* PR only writes this design documen
 - Implement `checkScenario(workdir, scenario)`: spawn `success.sh`, return exit code
 - Test on a single scenario in isolation before plugging into the agent loop
 
-### Sub-task iii — Build A1, A2, A3
+### Sub-task iii — Build A1, A2, A3, B1
 
 - For each scenario:
   - Identify the precise line(s) to change (per [`04-scenario-corpus.md`](./04-scenario-corpus.md))
@@ -43,17 +43,18 @@ These are sub-tasks for follow-up PRs. *This* PR only writes this design documen
   - Verify `git apply base.patch` cleanly applies and the failing test fails
   - Verify `git apply --reverse base.patch` cleanly returns to good state
   - Write `task.txt` with no leading hints about file location
-  - Write `success.sh` that runs the right `bun test` command
+  - Write `success.sh` that runs the right `bun test` / `bun run typecheck` command
   - Write `README.md` with bug summary, ground-truth fix location, and hypothesis
+- For B1 specifically: confirm the typecheck error count is large (≥ ~10 errors) so the in-prompt-vs-opt-in distinction has room to manifest
 
 ### Sub-task iv — Run baseline pass
 
-- 3 scenarios × 3 repeats = 9 baseline runs
+- 4 scenarios × 3 repeats = 12 baseline runs
 - Save transcripts and metrics under `eval/results/<timestamp>/`
 
 ### Sub-task v — Run Mira-augmented pass
 
-- 9 mira runs
+- 12 mira runs
 - Save under same `<timestamp>` directory as iv so they're paired
 
 ### Sub-task vi — Aggregate and report
