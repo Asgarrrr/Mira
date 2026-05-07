@@ -259,6 +259,36 @@ For clusters of size 1 (no sibling), render as a normal single-finding bullet (n
 
 ---
 
+## 9c. RTK-derived patterns for Cluster B (deliberate steals)
+
+A V0.4 review pass on [`rtk-ai/rtk`](https://github.com/rtk-ai/rtk) surfaced three concrete patterns that map onto Cluster B's renderer surface and file layout. They are explicit recommendations to the Cluster B designer, with rationale pinned here so the choice is not lost in conversation. **None are bound until `05-tsc-parser.md` commits — but each should be addressed (adopt or reject with reason) before that doc opens.**
+
+**1. Explicit recovery hint on every truncation.** When the renderer drops information (cluster of 60 locations rendered as 8 — § 9b cap), the markdown MUST emit a one-line pointer next to the cut, not only at the footer:
+
+```md
+  also: src/foo.ts:34:7, src/bar.ts:67:3, … +52 more — see `.mira/runs/<id>/combined.log`
+```
+
+RTK calls this `force_tee_hint()` (`src/core/tee.rs`): the moment a filter cuts, the recovery path is force-emitted next to the cut so the agent never has to guess where the rest lives. Mira already emits `_evidence: .mira/runs/<id>/_` once at the markdown footer — that is the floor, not the ceiling. Per-cut hints are additive and compose with § 9b's "locations line" (suffix the tail). Reasoning: the agent reads markdown; if the markdown lies by omission without saying so in-line, the agent will not investigate.
+
+**2. Short-circuit on success.** `findings.length === 0 && exitCode === 0` → render `# tsc — pass` and return. No template, no exemplar, no preservation-gate logic firing on empty input. RTK calls this shape `match_output` (`src/core/toml_filter.rs`): when the success pattern matches, the entire output is one line. Implement as an **early return** at the top of the renderer, not as a branch buried in a multi-section function. Reasoning: the most common case (passing build) should hit the shortest code path AND produce the shortest agent-facing output. The single-line success is also the most cache-stable prefix in the agent's prompt.
+
+**3. Fixtures co-located with the filter.** § 11 currently parks fixtures under `tests/fixtures/tsc/`. RTK co-locates fixtures with the filter (`[[tests.foo]]` blocks inline in the TOML filter file). For TS we cannot inline tsc multi-line output in a string literal cleanly, but we *can* relocate the fixture directory:
+
+- **Keep § 11** (tests-first): `tests/fixtures/tsc/` — consistent with existing Mira convention (`tests/fixtures/tsc-e2e/`, etc.).
+- **Co-locate** (filter-first): `src/filter/filters/tsc/__fixtures__/` — filter, parser, cluster, render, tests, AND fixtures move as one cohesive unit. Better when filters are added/removed/forked. The cost is a one-time inconsistency with the rest of `tests/fixtures/`.
+
+Co-location is the SOTA move when filters become independent units (V0.5+ trajectory, § 11's "naming convention for V0.5+ filters"). **Decide before `05-tsc-parser.md` opens; update § 11's file layout if relocating.**
+
+**Patterns deliberately *not* stolen from RTK** (recorded so the question is closed, not re-litigated):
+
+- **Two-tier matching with overlap** (clap enum + TOML regex fallback) — RTK's "maintenance tax". Mira keeps a single `Map<string, Filter>` per § 4.
+- **Custom invocation rewrites** (e.g. RTK silently runs `git status --porcelain -b` instead of `git status`). Breaks ADR 0001's "raw evidence is what the tool actually emitted" contract; non-negotiable.
+- **`chars / 4` token heuristic** — RTK's only metric. Per § 10 we use Anthropic `count_tokens` against committed `tokens.json`; the bench rigor is a competitive advantage, not a parity concern.
+- **SQLite analytics layer** — RTK dedicates ~half of `src/core/` to it. `.mira/runs/<id>/` plus `mira list-recent-runs` covers the same surface for V0–V0.5.
+
+---
+
 ## 10. Measurability
 
 **Position.** A standalone bench (hard, deterministic gate) plus a manual Claude Code A/B (soft, real-client gate). Both must pass for V0.4 to ship.
@@ -445,5 +475,6 @@ These rules apply to the V0.4 PR. They become the convention for V0.5+ filters b
 | 8 | Exit code / stderr | Exit code preserved verbatim; stderr suppressed on filter hit |
 | 9 | Pilot | `tsc` |
 | 9b | Cascade dedup | `(ruleId, normalized-msg)` clustering, in V0.4 scope; rendered as template + concrete exemplar + locations (preserves shape AND content) |
+| 9c | RTK steals for Cluster B | Per-cut recovery hint, success short-circuit (`match_output`), fixture co-location decision; explicitly NOT copied: dual-tier matching, custom rewrites, `chars/4`, SQLite |
 | 10 | Measurement | Hard gate: `bench/filter/tsc.ts` (Anthropic `count_tokens`-based via committed `tokens.json`, 4 preservation gates incl. bijection, drift detection, trend regression, JSON output). Soft gate: manual Claude Code A/B on B1. |
 | 11 | Module structure & quality bar | `src/filter/filters/<program>/{index,parser,cluster,render,version}.ts` from day 1; one-way `cli → filter → core`; 10 code-review-enforceable rules |
