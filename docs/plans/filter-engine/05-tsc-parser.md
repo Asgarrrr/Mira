@@ -152,7 +152,7 @@ export function clusterDiagnostics(diags: TscDiagnostic[]): TscCluster[] {
 
 - **TS2739** ×8 — same shape: Type X is missing properties Y, Z from type T
   e.g. src/foo.ts:34:7 — Type '{ x: number; }' is missing the following properties from type 'Point': y, z
-  also: src/foo.ts:52:14, src/bar.ts:67:3, src/bar.ts:89:21, src/baz.ts:102:5, src/baz.ts:118:9, src/qux.ts:134:12, src/qux.ts:156:8
+  also: src/foo.ts at 52:14; src/bar.ts at 67:3, 89:21; src/baz.ts at 102:5, 118:9; src/qux.ts at 134:12, 156:8
 - **TS2551** src/user.ts:3:38 — Property 'firstNme' does not exist on type 'User'
   💡 Did you mean 'firstName'?
 - **TS2304** src/foo.ts:14:9 — Cannot find name 'Bar'
@@ -163,22 +163,22 @@ export function clusterDiagnostics(diags: TscDiagnostic[]): TscCluster[] {
 Format rules:
 
 - **Header line.** `# tsc — N errors in F files (Tms)` for failures, or `# tsc — pass (Tms)` when no findings. `N` = total diagnostics (sum of cluster sizes); `F` = unique files across all members.
-- **No `## <file>` section headers.** Locations are inline in `path:line:col` form so they are copy-pastable into VS Code, Claude Code's `read` tool, ripgrep, or any editor's "go to file:line" affordance.
+- **No `## <file>` section headers.** Single-finding bullets and the cluster `e.g.` exemplar use the inline `<path>:<line>:<col>` form so the agent can copy-paste one location into VS Code, Claude Code's `read` tool, ripgrep, or any editor's "go to file:line" affordance. The cluster `also:` line uses a grouped form (below).
 - **Single-finding bullet (cluster size 1).** `- **TSxxxx** <path>:<line>:<col> — <message>`. If `continuation` is non-empty, include it on the next line indented by 2 spaces (truncate to 240 chars per continuation, suffix with `…` when truncated). If `suggestion` is non-empty, render as `  💡 Did you mean '<X>'?` on its own indented line.
 - **Cluster bullet (cluster size ≥ 2).** Three lines:
   1. `- **TSxxxx** ×N — same shape: <human-readable template>` — substitute `<x>` placeholders with capital letters X, Y, Z, T, U, V, W in order of first occurrence (max 7; deeper structures keep `<x>`).
   2. `  e.g. <path>:<line>:<col> — <verbatim message of cluster.members[0]>` — first cluster member, full original message text.
-  3. `  also: <path>:<line>:<col>, <path>:<line>:<col>, ...` — every remaining member's location, comma-separated. Omit this line if cluster size is exactly 2 (single `e.g.` already covers half the cluster; the second member becomes `also: <one location>` for consistency, but if cluster size is 2, render `  also: <single location>` with no comma).
-- **Ordering.** Per `clusterDiagnostics` output order: clusters sorted by descending size, then ruleId asc, then first-member path asc.
+  3. `  also:` followed by `members[1..]` **grouped by file**. Each group is `<path> at <line>:<col>, <line>:<col>, …`; groups are separated by `; `. Within a group, locations sort by line ascending; across groups, by path ascending. When all remaining members share one file, render `also: <path> at <line>:<col>, …` (single group, no separator). When the cluster has exactly 2 members, the `also:` line carries one group with one location.
+- **Ordering.** Per `clusterDiagnostics` output order: clusters sorted by descending size, then ruleId asc, then first-member path asc. `cluster.members` itself is sorted by `(file asc, line asc)` so that `members[0]` (the exemplar) is deterministic and the `also:` line's per-file groups appear in path-asc order.
 - **No trailing newline magic** — `view.markdown` ends with `\n` exactly once.
 
 **Pass case rendering:** when `parseTscOutput` returns `[]`, render `# tsc — pass (Tms)\n`. The bench will not test compression on pass cases (raw output is already trivial), but the contract must be defined.
 
 **Information preservation in the renderer:**
 
-- Single-finding bullets preserve `(file, line, ruleId)` ✓ and the message body (truncated, never dropped) ✓.
-- Cluster bullets preserve `(file, line, ruleId)` for each member ✓ AND a verbatim message of the first member as exemplar ✓ AND the structural template ✓. The remaining members' messages are NOT inlined — but they are byte-identical (after normalization) to the exemplar by construction (cluster invariant), so the agent loses no actionable info. Raw verbatim messages remain in `combined.log` one read away.
-- The bench's four preservation gates (decisions § 10) catch a regression where any of these guarantees breaks (incl. the bidirectional gate that asserts every bullet maps back to a parsed finding).
+- Single-finding bullets preserve `(file, line, col, ruleId)` ✓ and the message body (truncated, never dropped) ✓.
+- Cluster bullets preserve `(file, line, col, ruleId)` for each member ✓ AND a verbatim message of the first member as exemplar ✓ AND the structural template ✓. `members[0]` lives on the `e.g.` line in inline `<path>:<line>:<col>` form; `members[1..]` live on the `also:` line in grouped `<path> at <line>:<col>, …` form. Both shapes are byte-extractable by the bijection walker (decisions § 10 gate d). The remaining members' messages are NOT inlined — but they are byte-identical (after normalization) to the exemplar by construction (cluster invariant), so the agent loses no actionable info. Raw verbatim messages remain in `combined.log` one read away.
+- The bench's four preservation gates (decisions § 10) catch a regression where any of these guarantees breaks (incl. the bidirectional gate that asserts every triple — inline OR grouped — maps back to a parsed finding).
 
 **No external dependencies.** Pure regex + string ops. No `chalk` for ANSI stripping, no `parse-tsc-output` from npm. The regex is committed and tested.
 

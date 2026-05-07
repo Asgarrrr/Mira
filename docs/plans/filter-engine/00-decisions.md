@@ -230,22 +230,24 @@ Examples that do NOT cluster:
 ```md
 - **TS2739** ×8 — same shape: Type X is missing properties Y, Z from type T
   e.g. src/foo.ts:34:7 — Type '{ x: number; }' is missing the following properties from type 'Point': y, z
-  also: src/foo.ts:52:14, src/bar.ts:67:3, src/bar.ts:89:21, src/baz.ts:102:5, src/baz.ts:118:9, src/qux.ts:134:12, src/qux.ts:156:8
+  also: src/foo.ts at 52:14; src/bar.ts at 67:3, 89:21; src/baz.ts at 102:5, 118:9; src/qux.ts at 134:12, 156:8
 ```
 
 Three lines per cluster:
 
 1. **Template line.** `- **TSxxxx** ×N — same shape: <human-readable normalized template>`. The `<x>` placeholders from raw normalization are rewritten to `X`, `Y`, `Z`, `T` for readability — substitute capital letters in order of first occurrence. Tells the agent the *structural* shape.
 2. **Exemplar line.** `  e.g. <path>:<line>:<col> — <verbatim message of first cluster member>`. Tells the agent one *concrete instance* — actual types, actual property names. The agent can act on this without reading raw evidence.
-3. **Locations line.** `  also: <comma-separated path:line:col list of remaining members>`. Tells the agent every other site to inspect after fixing the root.
+3. **Locations line, grouped by file.** `  also:` followed by remaining members **grouped by file**. Each group is `<path> at <line>:<col>, <line>:<col>, …`; groups are separated by `; `. When all remaining members share one file, the line collapses to `also: <path> at <line>:<col>, …` (no separator). Within a group, locations sort by line ascending; across groups, by path ascending. Tells the agent every other site to inspect after fixing the root, without paying for path repetition.
+
+**Why grouped by file, not flat `path:line:col, path:line:col, …`.** Empirically, on the committed `large.txt` fixture (32 same-shape errors in one file), the flat form spends ~430 tokens just repeating the path — 38% of the entire bullet. The grouped form drops that to ~30 tokens by emitting the path once, while preserving every `(file, line, col)` triple verbatim (so the bijection gate § 10 stays satisfied — see the `extractMarkdownTriples` walker). For multi-file clusters (B1's 8 TS2739s spanning 4 files) the grouping still wins because most files appear ≥ 2 times. The cost is a small parser asymmetry between the inline form (`<path>:<line>:<col>` in single-finding bullets and the `e.g.` exemplar) and the grouped form (`<path> at <line>:<col>, …`); the bench's bijection extractor handles both shapes.
 
 **Why both template AND exemplar.** A pure-normalized cluster bullet (`Type <x> is missing properties from <x>: y, z`) saves tokens but loses the actual type names. The agent has to read `combined.log` to recover them — an extra round-trip that defeats the filter's purpose. Adding ~60-80 tokens for a verbatim exemplar buys: agent acts in one read, semantic preservation real, raw evidence becomes optional not mandatory. **This is the cleanest SOTA trade in the renderer.**
 
 For clusters of size 1 (no sibling), render as a normal single-finding bullet (no `×N` annotation, no template, no exemplar — just the verbatim bullet with full message and the optional `Did you mean` suggestion).
 
 **Constraints.**
-- **Ordering.** Within a cluster: locations sorted lexicographically. Across clusters: sort by descending cluster size, then by `ruleId`, then by first location's path.
-- **Information preservation.** Each clustered finding's location is fully preserved on the continuation line. The verbatim message is not (replaced by the normalized form), but the original messages remain in raw `combined.log` one read away.
+- **Ordering.** Within a cluster, *cluster.members[]* is sorted by `(file asc, line asc)`. The `e.g.` exemplar is `members[0]`. The `also:` line emits `members[1..]` grouped by file (groups in path-asc order, locations in line-asc order within each group). Across clusters: sort by descending cluster size, then by `ruleId`, then by first member's path.
+- **Information preservation.** Every `(file, line, col, ruleId)` triple from the cluster's members appears verbatim in the rendered markdown — the exemplar carries `members[0]`'s triple in inline form, the `also:` line carries `members[1..]` in the grouped form. The bijection gate § 10 (d) parses both shapes. The verbatim *message* is preserved only on the exemplar (normalized for the rest), but original messages remain in raw `combined.log` one read away.
 - **No cross-rule clustering.** Two findings with different `ruleId` never cluster, even if their normalized messages match.
 
 **Why not `(ruleId, message)` exact match?** The same logical bug emits *different* messages when the involved types differ (B1's bug surfaces as 8 distinct messages all about "missing array wrapper on `evidenceRefs`", but each names a different surrounding type). Exact match clusters too narrowly. Normalization is the cheapest deterministic dedup that catches these.
@@ -344,7 +346,11 @@ e. **Token-budgeted rendering.** Renderer takes a budget; if exceeded, emits top
 1. **Triple coverage (forward).** For each parsed `Finding`, the triple `(file, line, ruleId)` MUST appear verbatim in the rendered markdown. Catches: parser produces findings but renderer drops them.
 2. **Message-body coverage.** For each parsed `Finding`, the message body MUST be reachable in the rendered markdown — verbatim, or truncated with an explicit `…` suffix. For findings in a cluster of size ≥ 2: the *exemplar* message (cluster member [0]) must be verbatim; remaining members are byte-identical to the exemplar after normalization (cluster invariant), so they are "reachable" through the exemplar. Catches: renderer drops actionable detail.
 3. **Parser line coverage.** `lines_parsed / lines_total ≥ 0.85` per fixture. Catches: a tsc format the regex doesn't match (e.g. `--pretty` mode) silently produces zero findings while the renderer asserts "tsc — pass" on a failing build.
-4. **Bijection (reverse).** Every `(file, line, ruleId)` triple appearing in the rendered markdown MUST map back to a parsed `Finding`. Catches: renderer hallucinates a bullet (wrong cluster count, copy-paste bug in template substitution, off-by-one in location list). Implemented by parsing the rendered markdown with a small extractor regex (`/\*\*TS\d+\*\*.*?(\S+):(\d+):(\d+)/g`) and asserting set-equality against the parsed Findings' triples.
+4. **Bijection (reverse).** Every `(file, line, col)` triple appearing in the rendered markdown MUST map back to a parsed `Finding`. Catches: renderer hallucinates a bullet (wrong cluster count, copy-paste bug in template substitution, off-by-one in location list). Implemented by `extractMarkdownTriples(markdown)` — a small walker (~15 LOC) that handles two shapes:
+    - **Inline shape** (single-finding bullet, cluster `e.g.` exemplar): a `<path>:<line>:<col>` token after `**TSxxxx**` or `e.g.` on the same line.
+    - **Grouped shape** (cluster `also:` line): split the line on `; ` to get per-file groups, parse each group as `<path> at <line>:<col>(, <line>:<col>)*`, and emit one triple per `<line>:<col>`.
+
+   Both shapes feed a `Set<\`${file}:${line}:${col}\`>` that must equal the set built from parsed Findings' triples. Walker is in `bench/filter/tsc.ts` and is unit-tested via `tests/filter-tsc-render.test.ts` (any spec drift fails the test before reaching the bench).
 
 **Pass criteria for V0.4 ship (hard gate):**
 
