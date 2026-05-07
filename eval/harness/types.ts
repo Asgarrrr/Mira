@@ -67,6 +67,8 @@ export type TranscriptEvent =
 			tokensOutput: number;
 			toolCalls: number;
 			toolCallsByName: Record<string, number>;
+			filesRead: number;
+			filesModified: number;
 			wallClockMs: number;
 			stopReason:
 				| "model_end"
@@ -75,3 +77,28 @@ export type TranscriptEvent =
 				| "wall_clock_cap"
 				| "max_tokens_truncated";
 	  };
+
+// One row per (scenario, mode, repeat) execution. Persisted as metrics.json
+// alongside the transcript; consumed by report.ts in PR 3.
+export type RunMetrics = {
+	scenario: string;
+	mode: Mode;
+	repeat: number;
+	model: string;
+	success: boolean;
+	stopReason:
+		| "model_end"
+		| "max_turns"
+		| "token_cap"
+		| "wall_clock_cap"
+		| "max_tokens_truncated";
+	turns: number;
+	tokensInput: number;
+	tokensOutput: number;
+	tokensTotal: number;
+	toolCalls: number;
+	toolCallsByName: Record<string, number>;
+	filesRead: number;
+	filesModified: number;
+	wallClockMs: number;
+};
