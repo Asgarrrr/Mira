@@ -119,8 +119,11 @@ export function buildRewrittenCommand(
 	command: string,
 	miraCmd?: string,
 ): string {
+	// `--quiet` keeps the agent's tool result clean (no `[mira] <id> · …`
+	// footer appended to every observed command's output). The observation
+	// is still persisted; agents that want it can fetch via list_recent_runs.
 	const cmd = miraCmd ?? getDefaultMiraCmd();
-	return `${cmd} run ${escapeForShell(command)}`;
+	return `${cmd} run --quiet ${escapeForShell(command)}`;
 }
 
 export function buildHookOutput(rewritten: string): RewriteOutput {
