@@ -154,7 +154,7 @@ bun test tests/cli-run.e2e.test.ts
 - `bun test` for the full suite passes.
 - `bun tsc --noEmit` green.
 - No new external dependencies.
-- `src/cli/run.ts` diff is ≤ 30 added LOC (filter integration only; no refactor of unrelated code).
+- `src/cli/run.ts` diff is ≤ ~45 added LOC (filter integration only; no refactor of unrelated code). The "Estimated diff size" section below quotes ~40 in `run.ts` — accept that as the realistic budget; the dispatch call + tagged-result branching + schema validation + writeFiltered + error warning do not compress below ~40 without sacrificing readability.
 
 ## Depends on
 

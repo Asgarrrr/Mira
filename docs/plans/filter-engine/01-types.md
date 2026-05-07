@@ -94,7 +94,7 @@ bun test tests/filter-types.test.ts
 - `bun test tests/filter-types.test.ts` passes.
 - `bun tsc --noEmit` is green.
 - `src/filter/types.ts` exports exactly: `FilterContext`, `FilterInput`, `FilteredView`, `Filter`.
-- `src/filter/registry.ts` exports `REGISTRY` of type `Map<string, Filter>` with size 0.
+- `src/filter/registry.ts` exports `REGISTRY` of type `Map<string, RegistryEntry>` (where `RegistryEntry = { filter: Filter; version: string }`) with size 0.
 
 ## Depends on
 

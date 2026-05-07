@@ -59,15 +59,16 @@ export function dispatchFilter(
 	if (entry === undefined) return { kind: "miss" };
 	try {
 		const view = entry.filter(input, ctx);
-		// Pretty-mode passthrough: if a filter saw non-empty output on a failed
-		// run but produced zero findings, its parser hit a format it does not
-		// recognize (e.g. tsc `--pretty` mode). Treat as miss so the agent gets
-		// raw output instead of a wrong "<program> — pass" header. See
-		// docs/plans/filter-engine/02-dispatcher.md.
+		// Pretty-mode passthrough: if a filter saw non-empty output on a
+		// non-successful run but produced zero findings, its parser hit a
+		// format it does not recognize (e.g. tsc `--pretty` mode) or the run
+		// was signal-killed. Treat as miss so the agent gets raw output
+		// instead of a wrong "<program> — pass" header. `exitCode !== 0`
+		// covers both non-zero (failed) and `null` (signal-killed).
 		if (
 			view.findings.length === 0 &&
 			input.stdout.length + input.stderr.length > 0 &&
-			(input.exitCode ?? 0) !== 0
+			input.exitCode !== 0
 		) {
 			return { kind: "miss" };
 		}

@@ -134,6 +134,24 @@ describe("dispatchFilter", () => {
 		expect(result).toEqual({ kind: "miss" });
 	});
 
+	test("treats zero findings on signal-killed (exitCode=null) output as a miss", () => {
+		const filter: Filter = () => ({
+			findings: [],
+			markdown: "# tsc — pass",
+		});
+		register("kill-test", filter, "kill-test/1");
+
+		const killedInput: FilterInput = {
+			stdout: "partial output before SIGTERM",
+			stderr: "",
+			exitCode: null,
+			signal: "SIGTERM",
+			durationMs: 0,
+		};
+		const result = dispatchFilter("kill-test", killedInput, CTX);
+		expect(result).toEqual({ kind: "miss" });
+	});
+
 	test("zero findings on empty input + zero exit code is still a hit (legitimate pass)", () => {
 		const view = { findings: [], markdown: "# tsc — pass" };
 		const filter: Filter = () => view;

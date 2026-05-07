@@ -16,9 +16,7 @@ const BOOTSTRAP = resolve(HERE, "fixtures", "filter-cli-bootstrap.ts");
 type Mode = "none" | "hit" | "throw";
 
 async function runBootstrap(args: string[], cwd: string, mode: Mode) {
-	const env: Record<string, string> = {
-		...(process.env as Record<string, string>),
-	};
+	const env: NodeJS.ProcessEnv = { ...process.env };
 	if (mode !== "none") env.MIRA_FILTER_FIXTURE_MODE = mode;
 	else delete env.MIRA_FILTER_FIXTURE_MODE;
 	const proc = Bun.spawn(["bun", BOOTSTRAP, ...args], {
