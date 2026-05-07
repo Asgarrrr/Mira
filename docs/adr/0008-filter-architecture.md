@@ -133,6 +133,17 @@ the directory before there's real duplication is speculation.
 - Umbrella programs grow more directories than RTK's single-file approach.
   We accept this; the compensating gain is per-sub-program isolation and
   the absence of an internal dispatch surface.
+- The `entries.ts` indirection adds two levels to the longest dependency
+  chain (`registry → entries → index → …`). Sentrux's depth dimension drops
+  ~700 points as a result. We accept this; the compensating gain is that
+  filter authors never edit `registry.ts`'s structure, only its imports.
+  The single source of truth — what programs Mira filters — is preserved
+  in a flat, inspectable Map; what we lost is shallowness, not clarity.
+- `RegistryEntry` lives in `types.ts`, not `registry.ts`, because
+  per-program `entries.ts` files reference the type and a placement under
+  `registry.ts` would create a type-only import cycle (still a smell, even
+  if erased at compile time). Keep types in `types.ts`; let `registry.ts`
+  re-export so external consumers don't have to relearn the path.
 - `MAX_KEY_TOKENS` is a hard cap. Programs with 3+ token sub-commands
   (`kubectl get pods -n …`) cannot register a 3-token key today. Bumping
   the cap is a one-line change with no API impact, but it is a deliberate

@@ -2,7 +2,7 @@
 // imports + spreads each program's entries; new programs add a single import
 // line, no central editing of inline `Map.set` calls.
 
-import type { RegistryEntry } from "../../registry.ts";
+import type { RegistryEntry } from "../../types.ts";
 import { tscFilter } from "./index.ts";
 import { TSC_FILTER_VERSION } from "./version.ts";
 
