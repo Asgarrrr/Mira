@@ -27,7 +27,7 @@ working-tree state -> ArchitectureSignal[] -> ContextPack.suspectedFiles
 V0.3 extension:
 
 ```txt
-existing kernels -> MCP server (stdio) -> 5 tools
+existing kernels -> MCP server (stdio) -> insight tools
 ```
 
 ## Phase 1: Evidence Store (V0)
@@ -177,32 +177,28 @@ The "since last ContextPack" selection mode and richer graph signals remain post
 
 ## Phase 6: MCP server (V0.3)
 
-Expose Mira's existing kernels as a single agent-facing boundary.
+Expose Mira's insight kernels as a single agent-facing boundary.
 
 The vertical slice:
 
 ```txt
-existing kernels -> MCP server (stdio) -> 5 tools
+existing kernels -> MCP server (stdio) -> insight tools
 ```
 
-V0.3 introduces no new kernel and no new core type. It re-exposes the Evidence, Command, Context, and Architecture kernels through the Model Context Protocol over stdio. Full type, scope, transport choice, SDK rationale, and tool contracts: ADR 0006.
+V0.3 introduces no new kernel and no new core type. It re-exposes the Context and Evidence kernels through the Model Context Protocol over stdio. Full transport choice and SDK rationale: ADR 0006. Layering split (hook = data, MCP = insight) and the deprecation of the original data-layer tools: ADR 0007.
 
-Tools (exactly five, hard-coded):
+Tools (current, post-ADR 0007):
 
-* `run_command` — wraps the Command Kernel; `mira run` equivalent.
-* `get_observation` — wraps the Evidence Store; loads `.mira/runs/<id>/observation.json`.
-* `get_raw_evidence` — wraps the Evidence Store; returns a raw evidence file by `EvidenceRef`.
 * `generate_context_pack` — wraps the Context Kernel; `mira context` equivalent, with V0.2 architecture sensing applied.
-* `list_recent_runs` — wraps the Evidence Store; slim projection of recent observations.
+* `list_recent_runs` — wraps the Evidence Store; slim projection of recent observations across sessions.
 
-Out of scope (V0.3): HTTP / SSE / WebSocket transports, auth, multi-project sessions, streaming, Claude-Code-specific subagents or slash commands, Codex awareness docs, Cursor/Goose rule files, configurable timeouts or selection windows, a sixth tool. See ADR 0006 for the full out-of-scope list.
+Removed by ADR 0007 (originally part of the V0.3 scope in ADR 0006): `run_command`, `get_observation`, `get_raw_evidence`. The hook (`mira run`) is now the data layer; the MCP is the insight layer.
+
+Out of scope (V0.3): HTTP / SSE / WebSocket transports, auth, multi-project sessions, streaming, Claude-Code-specific subagents or slash commands, Codex awareness docs, Cursor/Goose rule files. See ADR 0006 for the full out-of-scope list.
 
 Definition of done:
 
 * MCP server starts on stdio and responds to the standard handshake using `@modelcontextprotocol/sdk`.
-* `run_command` accepts `{ command, projectRoot }`, executes via the Command Kernel, returns the existing `CommandObservation` verbatim, and preserves exit code, signal, and `killedByTimeout` through the observation — process-level failures are never reported as MCP errors.
-* `get_observation` accepts `{ observationId, projectRoot }`, loads the persisted `observation.json` under `<projectRoot>/.mira/runs/<id>/`, and returns it verbatim. `ArchitectureSignal[]` is never returned by this tool.
-* `get_raw_evidence` accepts `{ ref, projectRoot }`, resolves `ref.path` against `<projectRoot>/.mira/`, rejects any path that escapes that root, and returns raw bytes without truncation, summarization, or re-encoding.
 * `generate_context_pack` accepts `{ task, projectRoot }`, runs the V0.1 selection (last 10) and the V0.2 architecture sensing (ADR 0005), persists `.mira/context/<context-id>.{json,md}`, and returns the existing `ContextPack` verbatim. The cap of 20 paths in `suspectedFiles` is enforced by the Context Kernel and not re-paginated by the tool.
 * `list_recent_runs` accepts `{ projectRoot, limit? }` (default 10, max 50), returns a slim projection (`id`, `command`, `status`, `exitCode`, `signal?`, `killedByTimeout`, `durationMs`, `startedAt`) of fields already present on `CommandObservation`/`CommandRun` — no new field is introduced.
 * Every tool that touches the project tree takes an explicit absolute `projectRoot`; the server never reads `process.cwd()` to resolve a project.
@@ -215,16 +211,11 @@ Definition of done:
 Expected files touched (impl PR):
 
 * `src/mcp/server.ts` — server bootstrap, stdio transport, tool registration.
-* `src/mcp/tools/run-command.ts`
-* `src/mcp/tools/get-observation.ts`
-* `src/mcp/tools/get-raw-evidence.ts`
 * `src/mcp/tools/generate-context-pack.ts`
 * `src/mcp/tools/list-recent-runs.ts`
 * `src/cli/index.ts` — new `mira mcp` subcommand to launch the server (or equivalent bin entry).
-* `tests/mcp-tools.test.ts` — per-tool unit + integration coverage.
+* `tests/mcp-*.test.ts` — per-tool unit + integration coverage.
 * `package.json` — `@modelcontextprotocol/sdk` added.
-
-The implementation may inline the five tool handlers into `server.ts` if that stays smaller than the split above; the file boundaries above are guidance, not a contract. The contract is the tool list, the inputs, the outputs, the errors, and the invariants in ADR 0006.
 
 ## Post-V0.3 integrations
 
@@ -236,7 +227,7 @@ The following are explicitly **not** part of V0.3 and will be considered separat
 * MCP HTTP / SSE / WebSocket transports.
 * Authentication, authorization, or multi-project sessions in a single server process.
 * Streaming command output or context packs as deltas.
-* A sixth MCP tool. Five tools, hard-coded. Adding one requires a new ADR.
+* New MCP tools beyond the current insight surface — each one requires its own design pass justified by an observed need (ADR 0007).
 
 ## Review protocol
 

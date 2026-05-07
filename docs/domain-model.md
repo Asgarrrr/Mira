@@ -176,14 +176,12 @@ V0.2 sensing is filesystem-only: it reads `git status` / `git diff` for changed 
 
 V0.3 introduces no new domain type.
 
-The MCP boundary re-exposes the existing kernels over stdio. Its five tools take typed inputs and return existing types verbatim:
+The MCP boundary re-exposes Mira's insight kernels over stdio. Per ADR 0007, the data layer is the hook (`mira run` + Evidence Store) and the MCP is the insight layer; the original five-tool surface has been trimmed to the insight tools. Each tool takes typed inputs and returns existing types verbatim:
 
-- `run_command` and `get_observation` return `CommandObservation`.
-- `get_raw_evidence` returns the raw bytes of a file referenced by an existing `EvidenceRef`.
 - `generate_context_pack` returns `ContextPack` (whose `suspectedFiles` already projects `ArchitectureSignal[]` per ADR 0005).
 - `list_recent_runs` returns a slim projection of fields already present on `CommandObservation` and `CommandRun` — it introduces no new field.
 
-Errors are reported through the SDK's `McpError` envelope; no domain-level error type is added in V0.3. Full input/output/error contracts and the per-tool kernel mapping live in ADR 0006.
+Errors are reported through the SDK's `McpError` envelope; no domain-level error type is added in V0.3. Full input/output/error contracts live in ADR 0006; the post-deprecation surface is summarised in ADR 0007.
 
 ## ToolAdapter (post-V0)
 

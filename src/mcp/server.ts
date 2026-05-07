@@ -11,92 +11,20 @@ import {
 	runGenerateContextPackTool,
 } from "./tools/generate-context-pack.ts";
 import {
-	getObservationInputShape,
-	runGetObservationTool,
-} from "./tools/get-observation.ts";
-import {
-	getRawEvidenceInputShape,
-	runGetRawEvidenceTool,
-} from "./tools/get-raw-evidence.ts";
-import {
 	listRecentRunsInputShape,
 	runListRecentRunsTool,
 } from "./tools/list-recent-runs.ts";
-import {
-	runCommandInputShape,
-	runRunCommandTool,
-} from "./tools/run-command.ts";
 
-// V0.3 boundary: a single MCP server that re-exposes the existing kernels.
-// `@modelcontextprotocol/sdk` is consumed only inside `src/mcp/`. The five
-// tools registered here are hard-coded — clients cannot register new ones.
-// See ADR 0006.
+// V0.3 boundary: a single MCP server that re-exposes Mira's insight kernels.
+// `@modelcontextprotocol/sdk` is consumed only inside `src/mcp/`. Tools are
+// hard-coded — clients cannot register new ones. See ADR 0006 for the original
+// scope and ADR 0007 for the hook-as-data / MCP-as-insight split that
+// deprecated `run_command`, `get_observation`, and `get_raw_evidence`.
 export function createMiraMcpServer(): McpServer {
 	const server = new McpServer({
 		name: "mira",
 		version: "0.3.0",
 	});
-
-	server.registerTool(
-		"run_command",
-		{
-			title: "Run a command",
-			description:
-				"Execute a shell command in the given project root, capture evidence, and return the resulting CommandObservation. Process-level outcomes (non-zero exit, signal, timeout) are returned via the observation's fields, never via MCP errors.",
-			inputSchema: runCommandInputShape,
-		},
-		async (input) => {
-			return guardHandler(async () => {
-				const { observation } = await runRunCommandTool(input);
-				return {
-					structuredContent: { observation },
-					content: [
-						{ type: "text", text: JSON.stringify(observation, null, 2) },
-					],
-				};
-			});
-		},
-	);
-
-	server.registerTool(
-		"get_observation",
-		{
-			title: "Get an observation by id",
-			description:
-				"Load the persisted CommandObservation for an observationId from the given project root's .mira/runs/<id>/observation.json. Returned verbatim; never includes ArchitectureSignal[].",
-			inputSchema: getObservationInputShape,
-		},
-		async (input) => {
-			return guardHandler(async () => {
-				const { observation } = await runGetObservationTool(input);
-				return {
-					structuredContent: { observation },
-					content: [
-						{ type: "text", text: JSON.stringify(observation, null, 2) },
-					],
-				};
-			});
-		},
-	);
-
-	server.registerTool(
-		"get_raw_evidence",
-		{
-			title: "Get raw evidence by reference",
-			description:
-				"Read the text content of a stored evidence file referenced by an existing EvidenceRef. ref.path is resolved against <projectRoot>/.mira/; traversal, out-of-tree absolute paths, and symlinks that escape the evidence root are rejected before any read. Files are decoded as UTF-8; invalid sequences are replaced with U+FFFD. V0 evidence kinds are all text (stdout/stderr/observation/etc.); extending this contract to binary evidence requires a new ADR. Mira does not truncate or summarize the file at this boundary.",
-			inputSchema: getRawEvidenceInputShape,
-		},
-		async (input) => {
-			return guardHandler(async () => {
-				const { ref, bytes, content } = await runGetRawEvidenceTool(input);
-				return {
-					structuredContent: { ref, bytes, content },
-					content: [{ type: "text", text: content }],
-				};
-			});
-		},
-	);
 
 	server.registerTool(
 		"generate_context_pack",

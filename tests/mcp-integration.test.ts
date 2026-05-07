@@ -5,9 +5,11 @@ import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 
-import type { CommandObservation } from "../src/core/command-observation.ts";
+import { CommandObserver } from "../src/command/command-observer.ts";
+import { buildObservation } from "../src/core/command-observation.ts";
 import type { ContextPack } from "../src/core/context-pack.ts";
 import { createMiraMcpServer } from "../src/mcp/server.ts";
+import { FileEvidenceStore } from "../src/store/evidence-store.ts";
 
 async function connectClient() {
 	const server = createMiraMcpServer();
@@ -25,6 +27,17 @@ async function connectClient() {
 			await server.close();
 		},
 	};
+}
+
+// Seed an observation directly via the Command Kernel + Evidence Store —
+// the same path `mira run` uses. The hook is the data layer (ADR 0007), so
+// the MCP tests no longer drive `run_command` to populate `.mira/runs/`.
+async function seedRun(projectRoot: string, command: string): Promise<void> {
+	const store = new FileEvidenceStore(projectRoot);
+	const observer = new CommandObserver(store);
+	const { run } = await observer.observe(command, projectRoot);
+	const observation = buildObservation(run);
+	store.writeObservationJson(run.id, observation);
 }
 
 describe("Mira MCP server (in-process integration)", () => {
@@ -50,20 +63,12 @@ describe("Mira MCP server (in-process integration)", () => {
 		}
 	});
 
-	test("tools/list advertises exactly the five V0.3 tools", async () => {
+	test("tools/list advertises only the surviving insight tools (ADR 0007)", async () => {
 		const { client, close } = await connectClient();
 		try {
 			const { tools } = await client.listTools();
 			const names = tools.map((t) => t.name).sort();
-			expect(names).toEqual(
-				[
-					"generate_context_pack",
-					"get_observation",
-					"get_raw_evidence",
-					"list_recent_runs",
-					"run_command",
-				].sort(),
-			);
+			expect(names).toEqual(["generate_context_pack", "list_recent_runs"]);
 			// Each tool advertises an inputSchema requiring projectRoot.
 			for (const tool of tools) {
 				const required = tool.inputSchema?.required as string[] | undefined;
@@ -75,66 +80,11 @@ describe("Mira MCP server (in-process integration)", () => {
 		}
 	});
 
-	test("end-to-end: run_command → get_observation → get_raw_evidence", async () => {
-		const { client, close } = await connectClient();
-		try {
-			const runResult = await client.callTool({
-				name: "run_command",
-				arguments: { command: "echo flowed", projectRoot },
-			});
-			expect(runResult.isError).toBeFalsy();
-			const runStructured = runResult.structuredContent as {
-				observation: CommandObservation;
-			};
-			expect(runStructured.observation.status).toBe("success");
-			expect(runStructured.observation.exitCode).toBe(0);
-			const observationId = runStructured.observation.id;
-
-			const getResult = await client.callTool({
-				name: "get_observation",
-				arguments: { observationId, projectRoot },
-			});
-			expect(getResult.isError).toBeFalsy();
-			const getStructured = getResult.structuredContent as {
-				observation: CommandObservation;
-			};
-			expect(getStructured.observation.id).toBe(observationId);
-			expect(getStructured.observation.command).toBe("echo flowed");
-
-			const stdoutRef = getStructured.observation.evidenceRefs.find(
-				(r) => r.kind === "stdout",
-			);
-			expect(stdoutRef).toBeDefined();
-
-			const rawResult = await client.callTool({
-				name: "get_raw_evidence",
-				arguments: { ref: stdoutRef, projectRoot },
-			});
-			expect(rawResult.isError).toBeFalsy();
-			const rawStructured = rawResult.structuredContent as {
-				ref: { path: string; kind: string };
-				bytes: number;
-				content: string;
-			};
-			expect(rawStructured.content).toBe("flowed\n");
-			expect(rawStructured.bytes).toBe(7);
-		} finally {
-			await close();
-		}
-	});
-
 	test("generate_context_pack returns ContextPack and persists to disk", async () => {
 		const { client, close } = await connectClient();
 		try {
-			// Seed two runs so the pack references something.
-			await client.callTool({
-				name: "run_command",
-				arguments: { command: "echo a", projectRoot },
-			});
-			await client.callTool({
-				name: "run_command",
-				arguments: { command: "echo b", projectRoot },
-			});
+			await seedRun(projectRoot, "echo a");
+			await seedRun(projectRoot, "echo b");
 
 			const result = await client.callTool({
 				name: "generate_context_pack",
@@ -153,14 +103,8 @@ describe("Mira MCP server (in-process integration)", () => {
 	test("list_recent_runs returns a slim projection", async () => {
 		const { client, close } = await connectClient();
 		try {
-			await client.callTool({
-				name: "run_command",
-				arguments: { command: "echo a", projectRoot },
-			});
-			await client.callTool({
-				name: "run_command",
-				arguments: { command: "echo b", projectRoot },
-			});
+			await seedRun(projectRoot, "echo a");
+			await seedRun(projectRoot, "echo b");
 
 			const result = await client.callTool({
 				name: "list_recent_runs",
@@ -179,57 +123,12 @@ describe("Mira MCP server (in-process integration)", () => {
 		}
 	});
 
-	test("non-zero exit is preserved through run_command without becoming an MCP error", async () => {
-		const { client, close } = await connectClient();
-		try {
-			const result = await client.callTool({
-				name: "run_command",
-				arguments: { command: "exit 7", projectRoot },
-			});
-			expect(result.isError).toBeFalsy(); // process-level outcome ≠ MCP error
-			const structured = result.structuredContent as {
-				observation: CommandObservation;
-			};
-			expect(structured.observation.status).toBe("failure");
-			expect(structured.observation.exitCode).toBe(7);
-		} finally {
-			await close();
-		}
-	});
-
 	test("Mira error code is carried in structuredContent.code on tool errors", async () => {
 		const { client, close } = await connectClient();
 		try {
 			const result = await client.callTool({
-				name: "get_raw_evidence",
-				arguments: {
-					ref: { path: "../etc/passwd", kind: "other" },
-					projectRoot,
-				},
-			});
-			expect(result.isError).toBe(true);
-			const structured = result.structuredContent as {
-				code: string;
-				message: string;
-			};
-			expect(structured.code).toBe("PATH_OUTSIDE_EVIDENCE");
-			expect(structured.message).toContain("../etc/passwd");
-			// The text content also leads with the Mira code, for clients that
-			// only inspect content[].
-			const text = (result.content as Array<{ type: string; text: string }>)[0]
-				?.text;
-			expect(text).toContain("PATH_OUTSIDE_EVIDENCE:");
-		} finally {
-			await close();
-		}
-	});
-
-	test("INVALID_INPUT for empty command is structured", async () => {
-		const { client, close } = await connectClient();
-		try {
-			const result = await client.callTool({
-				name: "run_command",
-				arguments: { command: "", projectRoot },
+				name: "list_recent_runs",
+				arguments: { projectRoot: "relative/path" },
 			});
 			expect(result.isError).toBe(true);
 			const structured = result.structuredContent as {
@@ -237,24 +136,12 @@ describe("Mira MCP server (in-process integration)", () => {
 				message: string;
 			};
 			expect(structured.code).toBe("INVALID_INPUT");
-		} finally {
-			await close();
-		}
-	});
-
-	test("NOT_FOUND for a missing observation is structured", async () => {
-		const { client, close } = await connectClient();
-		try {
-			const result = await client.callTool({
-				name: "get_observation",
-				arguments: { observationId: "run_does_not_exist", projectRoot },
-			});
-			expect(result.isError).toBe(true);
-			const structured = result.structuredContent as {
-				code: string;
-				message: string;
-			};
-			expect(structured.code).toBe("NOT_FOUND");
+			expect(structured.message).toContain("absolute path");
+			// The text content also leads with the Mira code, for clients that
+			// only inspect content[].
+			const text = (result.content as Array<{ type: string; text: string }>)[0]
+				?.text;
+			expect(text).toContain("INVALID_INPUT:");
 		} finally {
 			await close();
 		}

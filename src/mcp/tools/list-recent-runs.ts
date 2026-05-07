@@ -50,10 +50,10 @@ export type ListRecentRunsOutput = {
 };
 
 // Wraps the Evidence Store. Returns a slim projection of recent observations
-// for browsing — not a substitute for `get_observation`. Each row mirrors
-// fields already present on `CommandObservation`/`CommandRun`; ADR 0006
-// forbids introducing a new field here. `startedAt` lives on `CommandRun`
-// only, so each row is hydrated from both `observation.json` and
+// for browsing across sessions ("what have I already tried on this bug?").
+// Each row mirrors fields already present on `CommandObservation`/`CommandRun`;
+// ADR 0006 forbids introducing a new field here. `startedAt` lives on
+// `CommandRun` only, so each row is hydrated from both `observation.json` and
 // `metadata.json` of the same run dir.
 export async function runListRecentRunsTool(
 	input: ListRecentRunsInput,
@@ -68,7 +68,7 @@ export async function runListRecentRunsTool(
 	// reverse-lex sort = newest-first. Skip any dir without a complete pair of
 	// `observation.json` + `metadata.json`; that mirrors `listRecentObservations`'
 	// "skip incomplete dirs" behaviour and prevents the response from including
-	// rows that `get_observation` would refuse to serve.
+	// half-written rows from a run still in flight.
 	const entries = readdirSync(runsDir).sort().reverse();
 	const runs: RecentRunRow[] = [];
 	for (const id of entries) {
