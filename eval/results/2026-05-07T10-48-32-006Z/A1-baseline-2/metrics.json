@@ -1,0 +1,22 @@
+{
+  "scenario": "A1",
+  "mode": "baseline",
+  "repeat": 2,
+  "model": "claude-sonnet-4-6",
+  "success": true,
+  "stopReason": "model_end",
+  "turns": 11,
+  "tokensInput": 108740,
+  "tokensOutput": 3790,
+  "tokensTotal": 112530,
+  "toolCalls": 10,
+  "toolCallsByName": {
+    "grep": 1,
+    "read": 3,
+    "bash": 5,
+    "write": 1
+  },
+  "filesRead": 2,
+  "filesModified": 1,
+  "wallClockMs": 556935
+}
