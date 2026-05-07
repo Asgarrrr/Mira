@@ -28,15 +28,21 @@ Compact enough for an agent's window. Traceable enough to drill into raw bytes w
 
 ## What Mira does
 
-Two capabilities feed the agent today, both anchored on the unified evidence model.
+Three kernels feed the agent, all anchored on the unified evidence model.
 
-**Distillation** — command-specific filters turn raw output into typed `Finding[]` at capture time. V0.4 ships `tsc`; `git`, `eslint`, and `bun test` follow. Raw bytes are never discarded; the agent always has a one-hop drill-in.
+**Distillation** — command-specific filters turn raw output into typed `Finding[]` at capture time, with the raw bytes preserved on disk for one-hop drill-in.
+*Today:* `tsc`. *Roadmap:* `git`, `eslint`, `bun test`, `cargo`, `vitest`.
 
-**Structural sensing** — task-aware filesystem signals tied to specific paths: changed files (vs HEAD), related siblings (same directory, same stem), test counterparts, and import-hint references. Surfaced as `ArchitectureSignal[]` inside `ContextPack.suspectedFiles`, never as opaque global grades.
+**Structural sensing** — signals about the codebase tied to specific paths, never opaque global grades. Surfaced as `ArchitectureSignal[]` inside the `ContextPack`.
+*Today:* filesystem heuristics — changed files, related siblings, test counterparts, import-hint references.
+*Roadmap:* AST-aware coupling, git co-change frequency, hotspot detection, module ownership.
 
-They compose through the evidence model. A `tsc` failure becomes *"2 errors in `src/auth.ts` — its sibling `auth.helpers.ts` was changed in this working tree, and `tests/auth.test.ts` imports it."* Mira hands the agent the inputs; the narrative is the agent's own job.
+**Live map** — a typed, queryable cartography of the codebase: modules, exports, types, signatures, locations. The agent reads it before exploring, instead of burning tokens grepping for definitions and call sites.
+*Roadmap:* V0.6+.
 
-The substrate accumulates. A project that has lived with Mira for a few months carries a body of evidence a fresh agent cannot match — and every new agent that connects inherits it.
+They compose. *"3 test failures"* becomes *"3 failures in `core/middleware/auth.ts` — imported by 14 call sites, recently refactored, here are the verification commands to run next."* No single kernel produces that payload alone.
+
+The substrate accumulates. A project that has lived with Mira for six months carries a body of evidence a fresh agent cannot match — and every new agent that connects inherits it.
 
 ## Surfaces
 
