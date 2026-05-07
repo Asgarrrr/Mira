@@ -291,6 +291,53 @@ function synthesizeScenario(
 
 const SCRIPTS_DIR = resolve(HERE, "__fixtures__", "scripts");
 
+// First-experiment scenarios (`docs/eval/04-scenario-corpus.md`). The integration
+// test exercises only the metadata + patch-apply layer — it does not run
+// `success.sh`. That keeps the test cheap (no bun install, no full test
+// suite per scenario) while still catching the most common regressions:
+// a malformed `base.patch`, a missing required file, or a layout drift.
+const REAL_SCENARIO_IDS = ["A1", "A2", "A3", "B1"] as const;
+
+function discoverMiraRoot(): string {
+	const r = spawnSync("git", ["rev-parse", "--show-toplevel"], {
+		cwd: HERE,
+		encoding: "utf8",
+	});
+	if ((r.status ?? -1) !== 0) {
+		throw new Error("could not resolve mira repo root from eval/harness/");
+	}
+	return r.stdout.trim();
+}
+
+describe("real scenarios (A1, A2, A3, B1)", () => {
+	let miraRoot: string;
+
+	beforeAll(() => {
+		miraRoot = discoverMiraRoot();
+	});
+
+	for (const id of REAL_SCENARIO_IDS) {
+		test(`${id}: loadScenario + applyScenario succeed and clean up`, async () => {
+			const scenario = await loadScenario(id);
+			expect(scenario.id).toBe(id);
+			expect(scenario.task.length).toBeGreaterThan(0);
+
+			const applied = await applyScenario(scenario, {
+				repoRoot: miraRoot,
+				installDeps: false,
+			});
+			try {
+				expect(await pathExists(applied.workdir)).toBe(true);
+				expect(listWorktrees(miraRoot)).toContain(applied.workdir);
+			} finally {
+				await applied.cleanup();
+			}
+			expect(listWorktrees(miraRoot)).not.toContain(applied.workdir);
+			expect(await pathExists(applied.workdir)).toBe(false);
+		});
+	}
+});
+
 describe("checkScenario", () => {
 	let cwd: string;
 

@@ -113,6 +113,28 @@ describe("senseArchitecture / changed-file", () => {
 		expect(pathsByKind(signals, "changed-file")).toEqual(["src/utils/foo.ts"]);
 	});
 
+	test("handles rename status without leaking OLD path", async () => {
+		// `git status --porcelain=v1 -z` emits "R  NEW\0OLD\0" for renames.
+		// The parser must consume both tokens and only surface NEW. If it
+		// fails to skip OLD, OLD's own slice(3) is mis-parsed as another
+		// entry — and if that slice happens to match an existing file in
+		// the worktree, a phantom changed-file signal leaks through.
+		gitInit(cwd);
+		writeFile(cwd, "xx/foo.ts", "export const x = 1;\n");
+		// Decoy at the repo root: "xx/foo.ts".slice(3) === "foo.ts". If the
+		// parser mis-handles the OLD token, this file would be picked up as
+		// a fake changed-file because existsSync wouldn't filter it out.
+		writeFile(cwd, "foo.ts", "export const root = 1;\n");
+		gitCommitAll(cwd, "init");
+
+		const mv = spawnSync("git", ["mv", "xx/foo.ts", "xx/bar.ts"], { cwd });
+		if (mv.status !== 0) throw new Error("git mv failed");
+
+		const signals = await senseArchitecture(cwd);
+		const changed = pathsByKind(signals, "changed-file").sort();
+		expect(changed).toEqual(["xx/bar.ts"]);
+	});
+
 	test("emits one changed-file signal per existing modified path with source 'git'", async () => {
 		gitInit(cwd);
 		writeFile(cwd, "src/a.ts", "export const a = 1;\n");

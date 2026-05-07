@@ -1,0 +1,17 @@
+diff --git a/src/architecture/sense.ts b/src/architecture/sense.ts
+index 4622d1d..c0e95b1 100644
+--- a/src/architecture/sense.ts
++++ b/src/architecture/sense.ts
+@@ -190,11 +190,7 @@ function parsePorcelainZ(stdout: string): string[] {
+ 		const Y = entry[1];
+ 		const path = entry.slice(3);
+ 		// Renames/copies emit "<status> NEW\0OLD\0"; we want NEW, skip OLD.
+-		if (X === "R" || X === "C") {
+-			i += 2;
+-		} else {
+-			i += 1;
+-		}
++		i += 1;
+ 		// Pure deletes; existence check would also filter them but be explicit.
+ 		if (X === "D" && (Y === " " || Y === "D")) continue;
+ 		paths.push(path);

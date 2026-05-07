@@ -1,0 +1,1 @@
+`bun run typecheck` is failing with many errors across multiple files. Find the root cause and fix it. Then verify `bun test` is also green.

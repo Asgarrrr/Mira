@@ -1,0 +1,12 @@
+diff --git a/src/core/command-observation.ts b/src/core/command-observation.ts
+index 2313a81..432ff37 100644
+--- a/src/core/command-observation.ts
++++ b/src/core/command-observation.ts
+@@ -70,6 +70,6 @@ function buildSummary(run: CommandRun): string {
+ 			? `${cmd} killed by ${run.signal} after ${run.durationMs}ms`
+ 			: `${cmd} exited with unknown status after ${run.durationMs}ms`;
+ 	}
+-	const verb = run.exitCode === 0 ? "exited" : "failed";
++	const verb = run.exitCode === 0 ? "failed" : "exited";
+ 	return `${cmd} ${verb} with code ${run.exitCode} in ${run.durationMs}ms`;
+ }
