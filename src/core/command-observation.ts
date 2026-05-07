@@ -26,6 +26,11 @@ export const commandObservationSchema = z.object({
 	suggestedNextActions: z.array(z.string()),
 	verificationHints: z.array(z.string()),
 	evidenceRefs: z.array(evidenceRefSchema),
+	// Set when a registered filter rendered the agent-facing markdown for this
+	// run; the value is the filter's `<program>/<schema-version>` tag (e.g.
+	// `"tsc/1"`). Unset on filter miss or on pre-V0.4 evidence — the field is
+	// optional so existing observations round-trip unchanged.
+	filterVersion: z.string().optional(),
 });
 
 export type CommandObservation = z.infer<typeof commandObservationSchema>;

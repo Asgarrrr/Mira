@@ -24,7 +24,8 @@ type RunFileKey =
 	| "combined"
 	| "metadata"
 	| "observation_json"
-	| "observation_md";
+	| "observation_md"
+	| "filtered_md";
 
 const FILENAMES: Record<RunFileKey, string> = {
 	stdout: "stdout.log",
@@ -33,6 +34,7 @@ const FILENAMES: Record<RunFileKey, string> = {
 	metadata: "metadata.json",
 	observation_json: "observation.json",
 	observation_md: "observation.md",
+	filtered_md: "filtered.md",
 };
 
 export class FileEvidenceStore {
@@ -79,6 +81,10 @@ export class FileEvidenceStore {
 
 	writeObservationMarkdown(runId: string, markdown: string): void {
 		this.writeRunFile(runId, "observation_md", markdown);
+	}
+
+	writeFiltered(runId: string, markdown: string): void {
+		this.writeRunFile(runId, "filtered_md", markdown);
 	}
 
 	readRun(runId: string): CommandRun {
