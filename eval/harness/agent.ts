@@ -39,6 +39,8 @@ export type RunResult = {
 	tokensOutput: number;
 	toolCalls: number;
 	toolCallsByName: Record<string, number>;
+	filesRead: number;
+	filesModified: number;
 	wallClockMs: number;
 };
 
@@ -89,6 +91,12 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
 
 	const messages: MessageParam[] = [{ role: "user", content: task }];
 	const toolCallsByName: Record<string, number> = {};
+	// Distinct file paths touched by the agent. Counts unique paths, not call
+	// counts — re-reading the same file twice still counts as one file. Only
+	// the canonical `read` and `write` tools feed these sets; bash-side `cat`
+	// or `>>` are intentionally not tracked (we'd be guessing at intent).
+	const readPaths = new Set<string>();
+	const writePaths = new Set<string>();
 	let tokensInput = 0;
 	let tokensOutput = 0;
 	let toolCalls = 0;
@@ -158,6 +166,13 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
 			toolCalls += 1;
 			toolCallsByName[use.name] = (toolCallsByName[use.name] ?? 0) + 1;
 
+			const input = (use.input ?? {}) as Record<string, unknown>;
+			const path = typeof input.path === "string" ? input.path : "";
+			if (path.length > 0) {
+				if (use.name === "read") readPaths.add(path);
+				else if (use.name === "write") writePaths.add(path);
+			}
+
 			const startedToolAt = Date.now();
 			let result: { isError: boolean; content: string };
 			if (!tool) {
@@ -213,6 +228,8 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
 		tokensOutput,
 		toolCalls,
 		toolCallsByName,
+		filesRead: readPaths.size,
+		filesModified: writePaths.size,
 		wallClockMs,
 		stopReason,
 	});
@@ -225,6 +242,8 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
 		tokensOutput,
 		toolCalls,
 		toolCallsByName,
+		filesRead: readPaths.size,
+		filesModified: writePaths.size,
 		wallClockMs,
 	};
 }

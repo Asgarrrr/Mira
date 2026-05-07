@@ -2,8 +2,10 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import type Anthropic from "@anthropic-ai/sdk";
 
 import { runAgent } from "./agent.ts";
+import { applyScenario, checkScenario, loadScenario } from "./scenario.ts";
 import { makeBashTool } from "./tools/bash.ts";
 import { grepTool } from "./tools/grep.ts";
 import { createMiraMcpForAgent } from "./tools/mira-mcp.ts";
@@ -13,6 +15,7 @@ import type {
 	AgentConfig,
 	HarnessTool,
 	Mode,
+	RunMetrics,
 	TranscriptEvent,
 } from "./types.ts";
 
@@ -27,6 +30,18 @@ const SMOKE_CONFIG: AgentConfig = {
 	model: "claude-sonnet-4-6",
 	temperature: 0,
 	maxTurns: 5,
+	maxTokensPerTurn: 8192,
+	tokenCap: 200_000,
+	wallClockCapMs: 600_000,
+	bashTimeoutMs: 60_000,
+};
+
+// Per-run defaults for the first experiment. Caps from
+// docs/eval/05-first-experiment.md § Configuration.
+const EXPERIMENT_CONFIG: AgentConfig = {
+	model: "claude-sonnet-4-6",
+	temperature: 0,
+	maxTurns: 30,
 	maxTokensPerTurn: 8192,
 	tokenCap: 200_000,
 	wallClockCapMs: 600_000,
@@ -114,6 +129,151 @@ async function runSmokeMode(
 	return { success, harnessOk, reason: harnessError };
 }
 
+// Stable layout: each (scenario, mode, repeat) triple gets its own subdir under
+// a single per-experiment timestamp. report.ts (PR 3) globs metrics.json files
+// at this depth.
+function runDirName(scenario: string, mode: Mode, repeat: number): string {
+	return `${scenario}-${mode}-${repeat}`;
+}
+
+export type RunScenarioOptions = {
+	scenariosRoot?: string;
+	resultsRoot?: string;
+	// Pass an existing timestamp to group multiple runs under the same dir.
+	// Defaults to a fresh timestamp per call (smoke / single-shot use).
+	resultsTimestamp?: string;
+	repoRoot?: string;
+	installDeps?: boolean;
+	config?: AgentConfig;
+	client?: Anthropic;
+};
+
+export type RunScenarioResult = {
+	metrics: RunMetrics;
+	resultsDir: string;
+	transcriptPath: string;
+	metricsPath: string;
+};
+
+export async function runScenario(
+	scenarioId: string,
+	mode: Mode,
+	repeat: number,
+	opts: RunScenarioOptions = {},
+): Promise<RunScenarioResult> {
+	const config = opts.config ?? EXPERIMENT_CONFIG;
+	const stamp = opts.resultsTimestamp ?? timestampStamp();
+	const resultsRoot = opts.resultsRoot ?? RESULTS_ROOT;
+	const resultsDir = join(
+		resultsRoot,
+		stamp,
+		runDirName(scenarioId, mode, repeat),
+	);
+	await mkdir(resultsDir, { recursive: true });
+
+	const transcriptPath = join(resultsDir, "transcript.jsonl");
+	const metricsPath = join(resultsDir, "metrics.json");
+
+	const scenario = await loadScenario(scenarioId, {
+		scenariosRoot: opts.scenariosRoot,
+	});
+	const applied = await applyScenario(scenario, {
+		repoRoot: opts.repoRoot,
+		installDeps: opts.installDeps,
+	});
+
+	const events: TranscriptEvent[] = [];
+	const emit = (event: TranscriptEvent) => events.push(event);
+
+	const { tools, close } = await buildTools(mode, config.bashTimeoutMs);
+
+	try {
+		const result = await runAgent({
+			scenario: scenarioId,
+			mode,
+			workdir: applied.workdir,
+			task: scenario.task,
+			tools,
+			config,
+			emit,
+			successCheck: async () => {
+				const r = await checkScenario(applied.workdir, scenario);
+				return r.exitCode === 0;
+			},
+			client: opts.client,
+		});
+
+		const metrics: RunMetrics = {
+			scenario: scenarioId,
+			mode,
+			repeat,
+			model: config.model,
+			success: result.success,
+			stopReason: result.stopReason,
+			turns: result.turns,
+			tokensInput: result.tokensInput,
+			tokensOutput: result.tokensOutput,
+			tokensTotal: result.tokensInput + result.tokensOutput,
+			toolCalls: result.toolCalls,
+			toolCallsByName: result.toolCallsByName,
+			filesRead: result.filesRead,
+			filesModified: result.filesModified,
+			wallClockMs: result.wallClockMs,
+		};
+
+		await writeFile(
+			transcriptPath,
+			`${events.map((e) => JSON.stringify(e)).join("\n")}\n`,
+			"utf8",
+		);
+		await writeFile(
+			metricsPath,
+			`${JSON.stringify(metrics, null, 2)}\n`,
+			"utf8",
+		);
+
+		return { metrics, resultsDir, transcriptPath, metricsPath };
+	} finally {
+		await close();
+		await applied.cleanup();
+	}
+}
+
+async function runScenarioFromCli(argv: string[]): Promise<void> {
+	const id = argv[0];
+	const modeArg = argv[1];
+	if (!id || !modeArg) {
+		console.error(
+			"usage: bun harness/run.ts scenario <id> <baseline|mira> [--repeat N]",
+		);
+		process.exit(2);
+	}
+	if (modeArg !== "baseline" && modeArg !== "mira") {
+		console.error(
+			`scenario: mode must be "baseline" or "mira", got "${modeArg}"`,
+		);
+		process.exit(2);
+	}
+
+	let repeat = 1;
+	const repeatFlag = argv.indexOf("--repeat");
+	if (repeatFlag !== -1) {
+		const v = Number(argv[repeatFlag + 1]);
+		if (!Number.isFinite(v) || v < 1 || !Number.isInteger(v)) {
+			console.error("scenario: --repeat must be a positive integer");
+			process.exit(2);
+		}
+		repeat = v;
+	}
+
+	const { metrics, resultsDir } = await runScenario(id, modeArg, repeat);
+	console.log(`[scenario] ${id}/${modeArg}/${repeat} → ${resultsDir}`);
+	console.log(
+		`[scenario] success=${metrics.success} turns=${metrics.turns} tokens=${metrics.tokensTotal} stopReason=${metrics.stopReason}`,
+	);
+	process.exit(metrics.success ? 0 : 1);
+}
+
 async function runSmoke(): Promise<void> {
 	const stamp = timestampStamp();
 	const resultsDir = join(RESULTS_ROOT, stamp);
@@ -144,10 +304,18 @@ async function runSmoke(): Promise<void> {
 	console.log("[smoke] OK");
 }
 
-const subcommand = process.argv[2];
-if (subcommand === "smoke") {
-	await runSmoke();
-} else {
-	console.error("usage: bun harness/run.ts smoke");
-	process.exit(2);
+// Only dispatch CLI when invoked as a script — importing run.ts (e.g. from
+// run.test.ts) must not exit the process.
+if (import.meta.main) {
+	const subcommand = process.argv[2];
+	if (subcommand === "smoke") {
+		await runSmoke();
+	} else if (subcommand === "scenario") {
+		await runScenarioFromCli(process.argv.slice(3));
+	} else {
+		console.error(
+			"usage:\n  bun harness/run.ts smoke\n  bun harness/run.ts scenario <id> <baseline|mira> [--repeat N]",
+		);
+		process.exit(2);
+	}
 }
