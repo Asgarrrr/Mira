@@ -61,12 +61,18 @@ export class CommandObserver {
 			const procAlive = proc.exitCode === null && proc.signalCode === null;
 			if (procAlive) killedByTimeout = true;
 			if (proc.pid !== undefined) {
+				// Three-tier best-effort kill: group-kill (negative pid covers
+				// descendants), then leader-kill, then give up. Each tier may
+				// throw ESRCH if the target is already gone — which is fine,
+				// since the timeout has already fired and the race is over.
 				try {
 					process.kill(-proc.pid, "SIGKILL");
 				} catch {
 					try {
 						proc.kill("SIGKILL");
-					} catch {}
+					} catch {
+						// Process gone before we could kill it; nothing to do.
+					}
 				}
 			}
 			// Belt-and-suspenders: drop our end of the pipes so `close` fires

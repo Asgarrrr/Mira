@@ -1,0 +1,2 @@
+src/filter/filters/tsc/__fixtures__/sources/small.ts(1,25): error TS2307: Cannot find module './does-not-exist' or its corresponding type declarations.
+src/filter/filters/tsc/__fixtures__/sources/small.ts(4,7): error TS2322: Type 'string' is not assignable to type 'number'.

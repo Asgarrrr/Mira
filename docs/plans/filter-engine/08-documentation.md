@@ -1,5 +1,16 @@
 # Task 08 — ADR 0008 + observation-pipeline update
 
+> **Scope adjusted post-V0.4.x restructure.** ADR 0008 was written ahead of
+> this task as part of the filter subsystem restructure (see the V0.4.x
+> section in `README.md` of this plan). The ADR landed under
+> `docs/adr/0008-filter-architecture.md` rather than the originally-planned
+> `0008-filter-engine-v0-4-tsc-pilot.md` — the broader "subsystem
+> architecture" framing matches what was actually decided. This task's
+> remaining scope: revisit the ADR with bench-derived numbers from Task 07
+> (calibrated thresholds, measured ratios), update
+> `docs/observation-pipeline.md` to reflect V0.4 as shipped, and add the
+> `CLAUDE.md` § V0.4 scope paragraph.
+
 ## Goal
 
 Lock V0.4 in writing: a new ADR (`docs/adr/0008-filter-engine-v0-4-tsc-pilot.md`) commits the filter contract, the registry shape, and the pilot. `docs/observation-pipeline.md` is updated from "research + roadmap" to "this is what V0.4 ships". `CLAUDE.md` § V0.4 scope gets one paragraph. Bench result is recorded.

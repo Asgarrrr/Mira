@@ -1,5 +1,4 @@
-import { resolve } from "node:path";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 import { generateReport } from "./report.ts";
 

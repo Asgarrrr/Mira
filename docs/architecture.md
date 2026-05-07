@@ -6,7 +6,7 @@ Mira's architecture follows from one constraint: every agent-facing conclusion m
 
 The system is split into **kernels** — small, single-responsibility units — rather than layered services. Each kernel either produces or consumes evidence and does nothing else. This keeps kernels independently testable, replaceable, and composable. The dependency direction is one-way by design: CLI and MCP adapt to the kernels, never the inverse.
 
-A separate **boundary layer** (the MCP server is the first instance) re-exposes kernels without becoming one. Boundaries translate; they do not produce evidence. Keeping them outside the kernel set lets new boundaries (HTTP, IDE bindings, agent-specific bridges) be added later without touching what kernels do.
+A separate **boundary layer** (the MCP server is the first instance) re-exposes kernels without becoming one. Boundaries translate; they do not produce evidence. Keeping them outside the kernel set lets a new boundary be added later without touching what kernels do — but no second boundary is planned. CLI and MCP are the only two surfaces Mira commits to.
 
 Two background principles run across the whole architecture:
 
@@ -262,6 +262,56 @@ Process-level command outcomes (non-zero exit, signal, timeout) are returned via
 
 Full type, transport, SDK choice, tool contracts, and out-of-scope list: ADR 0006.
 
+## Filter subsystem (V0.4)
+
+The Filter subsystem sits inside the Command Kernel pipeline. After
+`CommandObserver` captures raw stdout/stderr, the dispatcher in
+`src/filter/dispatch.ts` looks up a registered `Filter` for the command's
+program (and optional sub-program) and, if one matches, replaces the raw
+output reaching the agent with a compact structured markdown view. Raw
+evidence is always preserved on disk — the filter's markdown carries an
+`_evidence: .mira/runs/<id>/_` pointer back to it.
+
+Responsibilities:
+
+* parse a program's diagnostic output into structured findings (one
+  `Finding` per error/warning, with source range pointing into the persisted
+  raw bytes)
+* (optional) cluster findings by message shape so repeated errors collapse
+* render findings as compact markdown suited for an agent's context window
+* register one entry per `(program, sub-program)` pair into the central
+  `REGISTRY` Map
+
+Non-responsibilities:
+
+* **no internal sub-program dispatch inside a filter** — `git diff` and
+  `git status` are separate registry entries, not branches inside a single
+  `git` filter (see ADR 0008)
+* no streaming output — filters operate on the full captured buffer; the
+  Command Kernel surfaces the result once the run completes
+* no LLM calls, no external dependencies — parsers are stdlib + regex
+* no production of new evidence kinds — the filter consumes raw evidence
+  and emits the agent-facing markdown alongside `Finding[]` references
+
+Resolution uses **longest-prefix matching** on up to `MAX_KEY_TOKENS` (= 2
+today) post-wrapper tokens. For `pnpm exec git diff HEAD~1` the dispatcher
+strips `pnpm exec`, takes the first two tokens (`git`, `diff`), tries
+`"git diff"` first, falls back to `"git"`. Bumping the cap to 3 the day a
+`kubectl get pods` style key needs to register is a one-line change.
+
+Pretty-mode passthrough: if a parser receives output it can't recognize
+(e.g. tsc with `--pretty=true`) and returns zero findings on a non-zero
+exit, the dispatcher treats the result as a miss and falls back to raw
+output, so the agent never sees a misleading `<program> — pass` header for
+a failed run.
+
+Each filter lives under `src/filter/filters/<program>/` and contributes its
+registry tuples through a per-program `entries.ts`. Adding a new filter is
+one import + one spread in `src/filter/registry.ts`. The conventions and
+step-by-step walkthrough live in `src/filter/README.md`. The design
+rationale (entries pattern, longest-prefix dispatch, no-internal-dispatch
+rule, lazy `lib/`) is captured in ADR 0008.
+
 ## Dependency direction
 
 Preferred dependency direction:
@@ -347,6 +397,40 @@ tests/
 ```
 
 `src/mcp/` is the single home for the boundary. `@modelcontextprotocol/sdk` is consumed there and nowhere else. The five tool handlers may be inlined into `server.ts` if that stays smaller than splitting them; the contract is the tool list and the per-tool input/output/error specs in ADR 0006, not the file split.
+
+V0.4 will add:
+
+```txt
+src/
+  filter/
+    README.md                     contributor guide — how to add a filter
+    types.ts                      Filter, FilterContext, FilterInput, FilteredView, DispatchResult
+    dispatch.ts                   token extraction + longest-prefix-match resolution
+    registry.ts                   Map<key, RegistryEntry>, assembled from per-program entries
+    filters/
+      tsc/
+        entries.ts                registry tuples for this program
+        index.ts                  Filter glue (parser + cluster + render)
+        parser.ts
+        cluster.ts
+        render.ts
+        version.ts                filter version literal (single source of truth)
+        __fixtures__/             captured-output test data
+tests/
+  filter-dispatch.test.ts
+  filter-tsc-parser.test.ts
+  filter-tsc-cluster.test.ts
+  filter-tsc-render.test.ts
+  filter-types.test.ts
+  cli-run-tsc.e2e.test.ts
+```
+
+Each program directory under `filters/` exposes a `entries.ts` listing its
+registry contributions; `registry.ts` imports + spreads each. Adding a new
+filter does not edit `registry.ts`'s structure — only its import header.
+Sub-programs (e.g. `git diff` vs `git status`) get separate entries and live
+in nested directories under their umbrella. See ADR 0008 and
+`src/filter/README.md`.
 
 Interface/implementation splits, multiple observers, and command-specific summarizers are deferred until they are justified by an actual need.
 

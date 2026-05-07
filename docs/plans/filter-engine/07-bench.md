@@ -29,7 +29,7 @@ The bench is the **hard gate**. The soft gate is Task 09 (manual Claude Code A/B
 - `bench/README.md` — created (one paragraph: what `bench/` is, how it differs from `tests/` and `eval/`).
 - `bench/results/.gitkeep` — created (the trend-tracking directory; per-run JSON results land here).
 
-**No new runtime dependency for tokenization.** Token counts are read from the committed `tests/fixtures/tsc/tokens.json` (Task 04), itself produced via `anthropic.messages.count_tokens` at fixture capture time. The bench is fully offline at run time.
+**No new runtime dependency for tokenization.** Token counts are read from the committed `src/filter/filters/tsc/__fixtures__/tokens.json` (Task 04), itself produced via `anthropic.messages.count_tokens` at fixture capture time. The bench is fully offline at run time.
 
 ## Interface / API change
 
@@ -51,7 +51,7 @@ import { join } from "node:path";
 import { dispatchFilter } from "../../src/filter/dispatch.ts";
 import { parseTscOutputWithStats, clusterDiagnostics } from "../../src/filter/filters/tsc/parser.ts";
 
-const FIXTURE_DIR = join(import.meta.dirname, "..", "..", "tests", "fixtures", "tsc");
+const FIXTURE_DIR = join(import.meta.dirname, "..", "..", "src", "filter", "filters", "tsc", "__fixtures__");
 const RESULTS_DIR = join(import.meta.dirname, "..", "results");
 const FIXTURES = ["small.txt", "medium.txt", "large.txt"];
 
@@ -100,7 +100,7 @@ process.exit(result.passed && trendCheck.passed ? 0 : 1);
 
 **`benchOne` per fixture:**
 
-1. Read `tests/fixtures/tsc/<fixture>` as `raw`.
+1. Read `src/filter/filters/tsc/__fixtures__/<fixture>` as `raw`.
 2. Invoke via the dispatcher (so wrapper-stripping path is exercised in the bench too):
    `dispatchFilter("pnpm tsc --noEmit", { stdout: raw, stderr: "", exitCode: 2, durationMs: 0 }, { command: "pnpm tsc --noEmit", cwd: ".", runId: "bench" })`.
    The `pnpm` prefix forces the dispatcher to actually strip a wrapper before lookup. (REVIEW.md K.2.)
@@ -109,7 +109,11 @@ process.exit(result.passed && trendCheck.passed ? 0 : 1);
 5. **Gate (a) — triple coverage (forward).** Re-parse the raw fixture (`parseTscOutputWithStats`), iterate diagnostics, assert each `${file}:${line}:${col}` substring AND `**${ruleId}**` substring appear somewhere in `view.markdown`.
 6. **Gate (b) — body coverage.** For each diagnostic NOT in a cluster of size ≥2, assert the message body's first 60 chars (or its truncated `…`-suffixed form) appears in `view.markdown`. For cluster members [0] (the exemplar), assert verbatim message text appears.
 7. **Gate (c) — parser line coverage.** Read `stats.linesParsed / stats.linesTotal`; pass if ≥ 0.85.
-8. **Gate (d) — bijection (reverse).** Extract triples from `view.markdown` via `/\*\*(TS\d+)\*\*[^\n]*?(\S+):(\d+):(\d+)/g` (matches both single-finding bullets and cluster `e.g.`/`also:` lines). Build a Set of triples; assert it equals the Set of triples in the parsed Findings. Catches renderer hallucinations (wrong count, off-by-one location).
+8. **Gate (d) — bijection (reverse).** Extract `(file, line, col)` triples from `view.markdown` via `extractMarkdownTriples` (a small walker, ~15 LOC, lives next to `benchOne`). The walker handles two shapes per 00-decisions.md § 9b:
+   - **Inline shape** — single-finding bullets and cluster `e.g.` exemplars: line-level regex `/(?:\*\*TS\d+\*\*|e\.g\.) (\S+):(\d+):(\d+)/`.
+   - **Grouped shape** — cluster `also:` lines: split the line on `; ` to get per-file groups, parse each group as `<path> at (\d+:\d+(?:, \d+:\d+)*)`, and emit one triple per `<line>:<col>` token associated with the group's path.
+
+   Build the result `Set<\`${file}:${line}:${col}\`>` and assert set-equality against the Set built from parsed Findings. Catches renderer hallucinations (wrong cluster count, off-by-one in either form, copy-paste in template substitution). Walker has its own unit test in `tests/filter-tsc-render.test.ts` so the bench's failure modes are bounded to "parser disagrees with renderer", not "regex bug in the bench".
 9. **Exit code:** the bench feeds `exitCode: 2` (real tsc exits 2 on errors).
 10. Return a `Row`.
 

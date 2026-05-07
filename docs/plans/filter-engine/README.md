@@ -84,7 +84,7 @@ Measured by `bench/filter/tsc.ts`. See [`00-decisions.md`](./00-decisions.md) §
 
 | Metric | Threshold | Source |
 |---|---|---|
-| Median compression ratio `tokens(filtered) / tokens(raw)` | ≤ 0.30 | committed `tests/fixtures/tsc/tokens.json` (Anthropic's `messages.count_tokens`) |
+| Median compression ratio `tokens(filtered) / tokens(raw)` | ≤ 0.30 | committed `src/filter/filters/tsc/__fixtures__/tokens.json` (Anthropic's `messages.count_tokens`) |
 | Absolute tokens saved on B1 fixture (`medium.txt`) | ≥ 800 | bench |
 | Triple coverage (forward) | 100% of parsed `(file, line, ruleId)` triples in markdown | bench |
 | Body coverage | every non-cluster body reachable in markdown; cluster exemplar verbatim | bench |
@@ -209,3 +209,32 @@ The implementing agent must not drift into these:
 | 09 | [`09-claude-verification.md`](./09-claude-verification.md) | Manual Claude Code A/B on B1 (soft gate) | 3 | ~50 (procedure + PR notes) |
 
 Total: ~1360 lines of code + docs + data across 9 atomic tasks.
+
+---
+
+## V0.4.x — post-pilot restructure (interlude before Task 07)
+
+After Phase 2 (Tasks 04–06) shipped the pilot tsc filter, the subsystem was
+restructured to make adding the second filter (and umbrellas like `git diff`
+/ `git status`) a one-line edit instead of a central-file coordination
+point. The restructure does not change the agent-facing markdown — only the
+internal organization.
+
+**What shipped:**
+
+- Per-program `entries.ts` pattern. Each program directory exports its
+  registry tuples; `src/filter/registry.ts` imports and spreads each.
+  Adding a filter is one import + one spread.
+- Multi-token registry keys with longest-prefix matching in `dispatch.ts`.
+  `MAX_KEY_TOKENS = 2` covers `git diff` / `npm test` / `cargo build`.
+  Bumping is a one-line constant change.
+- `src/filter/README.md` — contributor guide with copy-pasteable templates.
+- `docs/adr/0008-filter-architecture.md` — design rationale (entries
+  pattern, longest-prefix dispatch, no internal sub-program dispatch, no
+  ecosystem grouping yet, lazy `lib/`).
+- `docs/architecture.md` — Filter subsystem section added.
+
+**What this means for Task 08:** ADR 0008 is now written. Task 08's
+remaining scope is to revisit the ADR with bench-derived numbers from
+Task 07 (calibrated thresholds, measured ratios) and update the
+observation-pipeline doc with the V0.4 commitment.

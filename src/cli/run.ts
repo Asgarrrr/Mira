@@ -1,5 +1,9 @@
 import { CommandObserver } from "../command/command-observer.ts";
-import { buildObservation } from "../core/command-observation.ts";
+import {
+	buildObservation,
+	commandObservationSchema,
+} from "../core/command-observation.ts";
+import { dispatchFilter } from "../filter/dispatch.ts";
 import { renderObservationMd } from "../render/render-observation.ts";
 import { FileEvidenceStore } from "../store/evidence-store.ts";
 
@@ -22,12 +26,44 @@ export async function runCommand(args: string[]): Promise<number> {
 
 	const { run, stdout, stderr } = await observer.observe(command, cwd);
 
-	const observation = buildObservation(run);
-	store.writeObservationJson(run.id, observation);
-	store.writeObservationMarkdown(run.id, renderObservationMd(observation, run));
+	const dispatchResult = dispatchFilter(
+		command,
+		{
+			stdout,
+			stderr,
+			exitCode: run.exitCode,
+			signal: run.signal,
+			durationMs: run.durationMs,
+		},
+		{ command, cwd, runId: run.id },
+	);
 
-	if (stdout) process.stdout.write(stdout);
-	if (stderr) process.stderr.write(stderr);
+	const observation = buildObservation(run);
+	if (dispatchResult.kind === "hit") {
+		observation.findings = dispatchResult.view.findings;
+		observation.filterVersion = dispatchResult.filterVersion;
+	}
+	// Defensive parse against schema drift after post-build mutation.
+	const validated = commandObservationSchema.parse(observation);
+	store.writeObservationJson(run.id, validated);
+	store.writeObservationMarkdown(run.id, renderObservationMd(validated, run));
+
+	if (dispatchResult.kind === "hit") {
+		const md = dispatchResult.view.markdown;
+		const trail = md.endsWith("\n") ? "" : "\n";
+		store.writeFiltered(run.id, md);
+		process.stdout.write(`${md}${trail}_evidence: .mira/runs/${run.id}/_\n`);
+	} else {
+		if (stdout) process.stdout.write(stdout);
+		if (stderr) process.stderr.write(stderr);
+		// Dispatcher swallowed the filter exception to keep the agent alive;
+		// surface a one-line notice so the failure is not silent.
+		if (dispatchResult.kind === "error") {
+			process.stderr.write(
+				`[mira] filter threw for "${dispatchResult.program}"; passthrough used\n`,
+			);
+		}
+	}
 
 	if (!quiet) {
 		const statusBit =

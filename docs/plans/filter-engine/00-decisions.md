@@ -230,22 +230,24 @@ Examples that do NOT cluster:
 ```md
 - **TS2739** ×8 — same shape: Type X is missing properties Y, Z from type T
   e.g. src/foo.ts:34:7 — Type '{ x: number; }' is missing the following properties from type 'Point': y, z
-  also: src/foo.ts:52:14, src/bar.ts:67:3, src/bar.ts:89:21, src/baz.ts:102:5, src/baz.ts:118:9, src/qux.ts:134:12, src/qux.ts:156:8
+  also: src/foo.ts at 52:14; src/bar.ts at 67:3, 89:21; src/baz.ts at 102:5, 118:9; src/qux.ts at 134:12, 156:8
 ```
 
 Three lines per cluster:
 
 1. **Template line.** `- **TSxxxx** ×N — same shape: <human-readable normalized template>`. The `<x>` placeholders from raw normalization are rewritten to `X`, `Y`, `Z`, `T` for readability — substitute capital letters in order of first occurrence. Tells the agent the *structural* shape.
 2. **Exemplar line.** `  e.g. <path>:<line>:<col> — <verbatim message of first cluster member>`. Tells the agent one *concrete instance* — actual types, actual property names. The agent can act on this without reading raw evidence.
-3. **Locations line.** `  also: <comma-separated path:line:col list of remaining members>`. Tells the agent every other site to inspect after fixing the root.
+3. **Locations line, grouped by file.** `  also:` followed by remaining members **grouped by file**. Each group is `<path> at <line>:<col>, <line>:<col>, …`; groups are separated by `; `. When all remaining members share one file, the line collapses to `also: <path> at <line>:<col>, …` (no separator). Within a group, locations sort by line ascending; across groups, by path ascending. Tells the agent every other site to inspect after fixing the root, without paying for path repetition.
+
+**Why grouped by file, not flat `path:line:col, path:line:col, …`.** Empirically, on the committed `large.txt` fixture (32 same-shape errors in one file), the flat form spends ~430 tokens just repeating the path — 38% of the entire bullet. The grouped form drops that to ~30 tokens by emitting the path once, while preserving every `(file, line, col)` triple verbatim (so the bijection gate § 10 stays satisfied — see the `extractMarkdownTriples` walker). For multi-file clusters (B1's 8 TS2739s spanning 4 files) the grouping still wins because most files appear ≥ 2 times. The cost is a small parser asymmetry between the inline form (`<path>:<line>:<col>` in single-finding bullets and the `e.g.` exemplar) and the grouped form (`<path> at <line>:<col>, …`); the bench's bijection extractor handles both shapes.
 
 **Why both template AND exemplar.** A pure-normalized cluster bullet (`Type <x> is missing properties from <x>: y, z`) saves tokens but loses the actual type names. The agent has to read `combined.log` to recover them — an extra round-trip that defeats the filter's purpose. Adding ~60-80 tokens for a verbatim exemplar buys: agent acts in one read, semantic preservation real, raw evidence becomes optional not mandatory. **This is the cleanest SOTA trade in the renderer.**
 
 For clusters of size 1 (no sibling), render as a normal single-finding bullet (no `×N` annotation, no template, no exemplar — just the verbatim bullet with full message and the optional `Did you mean` suggestion).
 
 **Constraints.**
-- **Ordering.** Within a cluster: locations sorted lexicographically. Across clusters: sort by descending cluster size, then by `ruleId`, then by first location's path.
-- **Information preservation.** Each clustered finding's location is fully preserved on the continuation line. The verbatim message is not (replaced by the normalized form), but the original messages remain in raw `combined.log` one read away.
+- **Ordering.** Within a cluster, *cluster.members[]* is sorted by `(file asc, line asc)`. The `e.g.` exemplar is `members[0]`. The `also:` line emits `members[1..]` grouped by file (groups in path-asc order, locations in line-asc order within each group). Across clusters: sort by descending cluster size, then by `ruleId`, then by first member's path.
+- **Information preservation.** Every `(file, line, col, ruleId)` triple from the cluster's members appears verbatim in the rendered markdown — the exemplar carries `members[0]`'s triple in inline form, the `also:` line carries `members[1..]` in the grouped form. The bijection gate § 10 (d) parses both shapes. The verbatim *message* is preserved only on the exemplar (normalized for the rest), but original messages remain in raw `combined.log` one read away.
 - **No cross-rule clustering.** Two findings with different `ruleId` never cluster, even if their normalized messages match.
 
 **Why not `(ruleId, message)` exact match?** The same logical bug emits *different* messages when the involved types differ (B1's bug surfaces as 8 distinct messages all about "missing array wrapper on `evidenceRefs`", but each names a different surrounding type). Exact match clusters too narrowly. Normalization is the cheapest deterministic dedup that catches these.
@@ -259,6 +261,55 @@ For clusters of size 1 (no sibling), render as a normal single-finding bullet (n
 
 ---
 
+## 9c. Where Mira goes beyond RTK (Cluster B/C-relevant upgrades)
+
+A V0.4 review pass on [`rtk-ai/rtk`](https://github.com/rtk-ai/rtk) surfaced patterns that map onto Cluster B/C's surface area. **RTK is one reference, not gospel.** Mira owns a typed `Finding[]` model that RTK does not, so each pattern below is reframed as the *Mira-native upgrade that goes beyond RTK*, not as RTK adoption. The Cluster B/C designer copies the upgrade, not the baseline.
+
+**1. Recovery is line-precise + structured, not free-text "see X".**
+When the renderer drops information (cluster of 60 rendered as 8 — § 9b cap), the markdown emits a structured cut-marker next to the cut — not just a path string. RTK's `force_tee_hint()` (`src/core/tee.rs`) emits a free-text pointer; Mira does better because every `Finding` already carries `evidenceRefs[]` and `excerpts[].lineStart/lineEnd` — typed, line-precise, machine-readable.
+
+```md
+  also: src/foo.ts:34:7, src/bar.ts:67:3, … +52 more
+  (lines 142-198 of `.mira/runs/<id>/combined.log`)
+```
+
+The cluster bullet's continuation includes the **line range** in `combined.log`, not just the file path. The agent fetches ~5 lines with `sed -n '142,198p'`, not a 200-line wall. **More elegant** (typed reference, not free text), **more powerful** (line-precise, not file-level), **more performant** (5-line fetch, not 200).
+
+**2. Success short-circuit is a typed guard, not a regex on output.**
+`findings.length === 0 && exitCode === 0` → render `# tsc — pass` and return. RTK's `match_output` regex-matches on output text (`^Found 0 errors`); Mira does better because the test runs on *already-computed structured data*. O(1) on the typed result, not regex over output bytes; composable with severity filters that RTK cannot express (`findings.filter(f => f.severity === 'error').length === 0`); cache-stable in the agent's prompt because the rendered prefix is deterministic on success.
+
+Implement as an **early return at the top of the renderer**, not a branch buried mid-function. The shortest case hits the shortest code path AND produces the shortest agent-facing output.
+
+**3. Fixtures are real source files, not strings embedded in test cases.**
+RTK inlines `[[tests.foo]]` blocks of input/expected strings in TOML. Mira does better with real `.ts` files under `<fixtures-dir>/sources/` that anyone can compile and re-capture, real `.txt` outputs, real `tokens.json`. Plus: the capture script self-checks — it re-parses each fixture, asserts `parser(fixture).length === expected_count` (committed in `tokens.json` metadata), fails loudly on drift. Catches a TS upgrade silently breaking the regex in a way RTK's bundled tests cannot.
+
+**Decision (Task 04, 2026-05-07):** **co-locate** under `src/filter/filters/tsc/__fixtures__/`. Filter, parser, cluster, render, version, AND fixtures travel as one cohesive unit. The cost is a one-time inconsistency with `tests/fixtures/tsc-e2e/` — accepted because e2e fixtures back the CLI integration test, not the filter module itself. § 11's file-layout block, the V0.5+ naming convention, and Tasks 04 / 05 / 07 paths all reflect this choice.
+
+Rejected alternative: keep fixtures under `tests/fixtures/tsc/` (consistent with existing Mira convention). Cheaper today, but loses the cohesion that pays off when V0.5 adds a second filter — the convention either gets retrofitted or grows into a permanent divergence.
+
+### Other Mira-native upgrades on the table
+
+Listed so they are not lost; the Cluster C designer evaluates each and either adopts in V0.4 or pushes to V0.5 with a one-line rationale.
+
+a. **Cache-stable header.** Move duration `(1240ms)` from the `# tsc — N errors` header line to the footer. Add a stable hash of the structured findings payload in a footer comment: `<!-- mira: filterVersion=tsc/1 hash=abc123 -->`. Agents with prompt caching get hit-stable prefixes when re-runs produce the same set. RTK has no such concept because there's no structured payload to hash. **V0.4 candidate** (~10 LOC).
+
+b. **Severity-ranked rendering.** Findings sorted by severity (`error` > `warning` > `info`), then by cluster size, then by first-member path. Errors surface above warnings even when cluster sizes invert. RTK truncates at `max_lines` blindly. **V0.4 candidate** (~3 LOC, an extra sort key in `clusterDiagnostics`).
+
+c. **Quarantine, don't drop.** Lines the parser cannot match become `Finding[severity:"info", ruleId:"unparsed", excerpts: [...]]` instead of being silently discarded. The renderer emits a footer block: `⚠ 3 unparsed lines — see combined.log:42-44`. The agent KNOWS what was missed; the bench's parser-coverage gate (≥ 0.85) becomes a soft warning instead of a silent loss. **V0.5 candidate** — formalizes what the coverage gate already implies, but adds agent-visible behavior that should bake in V0.4 first.
+
+d. **Render-format negotiation.** `FilterContext.outputFormat: "markdown" | "json"`. Agents that prefer structured input (Codex, future MCP consumers) ask for JSON; Claude Code stays on markdown. RTK is text-only by design. **V0.5+** — V0.4 ships markdown-only, contract supports the rest.
+
+e. **Token-budgeted rendering.** Renderer takes a budget; if exceeded, emits top-K by severity + structured fallback link to `observation.json`. Agent reads the JSON when it wants the rest. RTK's `max_lines` is the unranked equivalent. **V0.5+** — needs the agent's token budget surfaced, which V0.4 does not have.
+
+### Patterns deliberately NOT copied (closed, do not re-litigate)
+
+- **Two-tier matching with overlap** (clap enum + TOML regex fallback) — RTK's "maintenance tax". Mira keeps a single `Map<string, RegistryEntry>` per § 4.
+- **Custom invocation rewrites** (e.g. RTK silently runs `git status --porcelain -b` instead of `git status`). Breaks ADR 0001's "raw evidence is what the tool actually emitted" contract; non-negotiable.
+- **`chars / 4` token heuristic** — RTK's only metric. Per § 10 we use Anthropic `count_tokens` against committed `tokens.json`; the bench rigor is a competitive advantage, not a parity concern.
+- **SQLite analytics layer** — RTK dedicates ~half of `src/core/` to it. `.mira/runs/<id>/` plus `mira list-recent-runs` covers the same surface for V0–V0.5.
+
+---
+
 ## 10. Measurability
 
 **Position.** A standalone bench (hard, deterministic gate) plus a manual Claude Code A/B (soft, real-client gate). Both must pass for V0.4 to ship.
@@ -267,10 +318,10 @@ For clusters of size 1 (no sibling), render as a normal single-finding bullet (n
 
 **Metric.** `compression_ratio = tokens(filtered_stdout) / tokens(raw_stdout)`, computed on `N=3` committed fixtures (small, medium, large failures).
 
-**Tokenizer — authoritative.** Anthropic's `client.messages.count_tokens()` endpoint. Run **once at fixture-capture time** (Task 04) for the raw input, and once during bench development for the rendered output of every snapshot fixture; commit the resulting counts to `tests/fixtures/tsc/tokens.json` next to the `.txt` files. The bench reads pre-computed counts at run time — no network call during `bun bench/filter/tsc.ts`, no API key needed in CI, fully reproducible.
+**Tokenizer — authoritative.** Anthropic's `client.messages.count_tokens()` endpoint. Run **once at fixture-capture time** (Task 04) for the raw input, and once during bench development for the rendered output of every snapshot fixture; commit the resulting counts to `src/filter/filters/tsc/__fixtures__/tokens.json` next to the `.txt` files. The bench reads pre-computed counts at run time — no network call during `bun bench/filter/tsc.ts`, no API key needed in CI, fully reproducible.
 
 ```json
-// tests/fixtures/tsc/tokens.json (committed, regenerated when fixtures change)
+// src/filter/filters/tsc/__fixtures__/tokens.json (committed, regenerated when fixtures change)
 {
   "schema": "anthropic-count_tokens-v1",
   "model": "claude-opus-4-7",
@@ -295,7 +346,11 @@ For clusters of size 1 (no sibling), render as a normal single-finding bullet (n
 1. **Triple coverage (forward).** For each parsed `Finding`, the triple `(file, line, ruleId)` MUST appear verbatim in the rendered markdown. Catches: parser produces findings but renderer drops them.
 2. **Message-body coverage.** For each parsed `Finding`, the message body MUST be reachable in the rendered markdown — verbatim, or truncated with an explicit `…` suffix. For findings in a cluster of size ≥ 2: the *exemplar* message (cluster member [0]) must be verbatim; remaining members are byte-identical to the exemplar after normalization (cluster invariant), so they are "reachable" through the exemplar. Catches: renderer drops actionable detail.
 3. **Parser line coverage.** `lines_parsed / lines_total ≥ 0.85` per fixture. Catches: a tsc format the regex doesn't match (e.g. `--pretty` mode) silently produces zero findings while the renderer asserts "tsc — pass" on a failing build.
-4. **Bijection (reverse).** Every `(file, line, ruleId)` triple appearing in the rendered markdown MUST map back to a parsed `Finding`. Catches: renderer hallucinates a bullet (wrong cluster count, copy-paste bug in template substitution, off-by-one in location list). Implemented by parsing the rendered markdown with a small extractor regex (`/\*\*TS\d+\*\*.*?(\S+):(\d+):(\d+)/g`) and asserting set-equality against the parsed Findings' triples.
+4. **Bijection (reverse).** Every `(file, line, col)` triple appearing in the rendered markdown MUST map back to a parsed `Finding`. Catches: renderer hallucinates a bullet (wrong cluster count, copy-paste bug in template substitution, off-by-one in location list). Implemented by `extractMarkdownTriples(markdown)` — a small walker (~15 LOC) that handles two shapes:
+    - **Inline shape** (single-finding bullet, cluster `e.g.` exemplar): a `<path>:<line>:<col>` token after `**TSxxxx**` or `e.g.` on the same line.
+    - **Grouped shape** (cluster `also:` line): split the line on `; ` to get per-file groups, parse each group as `<path> at <line>:<col>(, <line>:<col>)*`, and emit one triple per `<line>:<col>`.
+
+   Both shapes feed a `Set<\`${file}:${line}:${col}\`>` that must equal the set built from parsed Findings' triples. Walker is in `bench/filter/tsc.ts` and is unit-tested via `tests/filter-tsc-render.test.ts` (any spec drift fails the test before reaching the bench).
 
 **Pass criteria for V0.4 ship (hard gate):**
 
@@ -362,15 +417,19 @@ tests/
   cli-run-filter.e2e.test.ts       integration — wiring (Task 03)
   cli-run-tsc.e2e.test.ts          integration — full pipeline (Task 06)
 
-  fixtures/tsc/                    (Task 04)
-    small.txt
-    medium.txt   (B1-shaped)
-    large.txt
-    sources/                       broken TS that produces the fixtures
-    snapshots/                     bun snapshot artefacts
-    README.md                      pinned TS version + capture procedure
   fixtures/tsc-e2e/                (Task 06) — minimal real project for e2e
+
+src/filter/filters/tsc/__fixtures__/   (Task 04 — co-located per § 9c)
+  small.txt
+  medium.txt        (B1-shaped)
+  large.txt
+  tokens.json       Anthropic count_tokens results (raw + filtered_expected)
+  sources/          broken TS that produces the fixtures
+  snapshots/        bun snapshot artefacts
+  README.md         pinned TS version + capture procedure
 ```
+
+**Why co-locate fixtures under `src/filter/filters/tsc/__fixtures__/`:** the fixtures, the parser/cluster/render modules, and the version tag move as one cohesive unit (RTK pattern, § 9c bullet 3). When V0.5 adds a second filter, `src/filter/filters/<program>/__fixtures__/` is the convention from day 1. The cost is a one-time inconsistency with `tests/fixtures/tsc-e2e/` (e2e fixtures stay in `tests/` because they back end-to-end CLI tests, not the filter module itself).
 
 **Why split `tsc.ts` into a directory from day 1, not "if it exceeds 320 LOC":** parsing, clustering, and rendering are three different concerns. Each has its own test file. Splitting later is a refactor that touches tests, snapshots, and possibly imports across the bench. Splitting from the start is one minute of mkdir; splitting later is a half-day chore. **State-of-the-art means the right shape from the start.**
 
@@ -423,7 +482,7 @@ These rules apply to the V0.4 PR. They become the convention for V0.5+ filters b
 - Glue file: `index.ts`, exports `<program>Filter: Filter` and `<PROGRAM>_FILTER_VERSION = "<program>/1"`
 - Sibling files by concern: `parser.ts`, `cluster.ts` (if needed), `render.ts`, `version.ts`
 - Tests: `tests/filter-<program>-<concern>.test.ts`
-- Fixtures: `tests/fixtures/<program>/{small,medium,large}.txt` + `sources/` + `README.md`
+- Fixtures (co-located): `src/filter/filters/<program>/__fixtures__/{small,medium,large}.txt` + `sources/` + `tokens.json` + `README.md`
 - Bench: `bench/filter/<program>.ts`
 - Registry line: one `.set("<program>", <program>Filter)` in `registry.ts`
 
@@ -445,5 +504,6 @@ These rules apply to the V0.4 PR. They become the convention for V0.5+ filters b
 | 8 | Exit code / stderr | Exit code preserved verbatim; stderr suppressed on filter hit |
 | 9 | Pilot | `tsc` |
 | 9b | Cascade dedup | `(ruleId, normalized-msg)` clustering, in V0.4 scope; rendered as template + concrete exemplar + locations (preserves shape AND content) |
+| 9c | RTK steals for Cluster B | Per-cut recovery hint, success short-circuit (`match_output`), fixture co-location decision; explicitly NOT copied: dual-tier matching, custom rewrites, `chars/4`, SQLite |
 | 10 | Measurement | Hard gate: `bench/filter/tsc.ts` (Anthropic `count_tokens`-based via committed `tokens.json`, 4 preservation gates incl. bijection, drift detection, trend regression, JSON output). Soft gate: manual Claude Code A/B on B1. |
 | 11 | Module structure & quality bar | `src/filter/filters/<program>/{index,parser,cluster,render,version}.ts` from day 1; one-way `cli → filter → core`; 10 code-review-enforceable rules |

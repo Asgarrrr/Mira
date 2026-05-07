@@ -1,5 +1,5 @@
 diff --git a/src/core/command-observation.ts b/src/core/command-observation.ts
-index 2313a81..095c676 100644
+index 4e8b453..6bd6ee4 100644
 --- a/src/core/command-observation.ts
 +++ b/src/core/command-observation.ts
 @@ -25,7 +25,7 @@ export const commandObservationSchema = z.object({
@@ -8,6 +8,6 @@ index 2313a81..095c676 100644
  	verificationHints: z.array(z.string()),
 -	evidenceRefs: z.array(evidenceRefSchema),
 +	evidenceRefs: evidenceRefSchema,
- });
- 
- export type CommandObservation = z.infer<typeof commandObservationSchema>;
+ 	// Set when a registered filter rendered the agent-facing markdown for this
+ 	// run; the value is the filter's `<program>/<schema-version>` tag (e.g.
+ 	// `"tsc/1"`). Unset on filter miss or on pre-V0.4 evidence — the field is
