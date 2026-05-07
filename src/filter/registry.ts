@@ -1,4 +1,4 @@
-import { TSC_FILTER_VERSION, tscFilter } from "./filters/tsc/index.ts";
+import { tscEntries } from "./filters/tsc/entries.ts";
 import type { Filter } from "./types.ts";
 
 // Each entry pairs a filter with a version string (e.g. `"tsc/1"`). The
@@ -7,7 +7,10 @@ import type { Filter } from "./types.ts";
 // persisted markdown (Axis 3, docs/observation-pipeline.md).
 export type RegistryEntry = { filter: Filter; version: string };
 
+// Single source of truth for which programs Mira filters. Each program owns
+// its `entries.ts`; this file just assembles them. Adding a new filter is one
+// import + one spread.
 export const REGISTRY: Map<string, RegistryEntry> = new Map<
 	string,
 	RegistryEntry
->([["tsc", { filter: tscFilter, version: TSC_FILTER_VERSION }]]);
+>([...tscEntries]);
