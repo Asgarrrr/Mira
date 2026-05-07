@@ -1,0 +1,24 @@
+{
+  "scenario": "A1",
+  "mode": "mira",
+  "repeat": 2,
+  "model": "claude-sonnet-4-6",
+  "success": true,
+  "stopReason": "wall_clock_cap",
+  "turns": 8,
+  "tokensInput": 81245,
+  "tokensOutput": 3163,
+  "tokensTotal": 84408,
+  "toolCalls": 11,
+  "toolCallsByName": {
+    "generate_context_pack": 1,
+    "list_recent_runs": 1,
+    "bash": 3,
+    "read": 4,
+    "write": 1,
+    "run_command": 1
+  },
+  "filesRead": 3,
+  "filesModified": 1,
+  "wallClockMs": 681385
+}

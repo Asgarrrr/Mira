@@ -316,6 +316,86 @@ async function runReportFromCli(argv: string[]): Promise<void> {
 	console.log(`[report] wrote ${join(resolved, "summary.md")}`);
 }
 
+const FIRST_EXPERIMENT_SCENARIOS = ["A1", "A2", "A3", "B1"] as const;
+const FIRST_EXPERIMENT_MODES: Mode[] = ["baseline", "mira"];
+const FIRST_EXPERIMENT_REPEATS = 3;
+const FIRST_EXPERIMENT_LOST_CELLS_TOLERANCE = 2;
+
+async function runExperimentFromCli(argv: string[]): Promise<void> {
+	const which = argv[0];
+	if (which !== "first") {
+		console.error("usage: bun harness/run.ts experiment first");
+		process.exit(2);
+	}
+
+	if (!process.env.ANTHROPIC_API_KEY) {
+		console.error(
+			"[experiment] ANTHROPIC_API_KEY is not set. Refusing to run.",
+		);
+		process.exit(1);
+	}
+
+	for (const id of FIRST_EXPERIMENT_SCENARIOS) {
+		try {
+			await loadScenario(id);
+		} catch (e) {
+			console.error(
+				`[experiment] failed to load scenario "${id}": ${(e as Error).message}`,
+			);
+			process.exit(1);
+		}
+	}
+
+	const stamp = timestampStamp();
+	const resultsDir = join(RESULTS_ROOT, stamp);
+	const total =
+		FIRST_EXPERIMENT_SCENARIOS.length *
+		FIRST_EXPERIMENT_MODES.length *
+		FIRST_EXPERIMENT_REPEATS;
+
+	console.error(
+		`[experiment] ${total} runs ~ $20 Sonnet, sequential, results: ${resultsDir}`,
+	);
+	console.error(
+		"[experiment] press Ctrl-C now if not intended; starting in 3s",
+	);
+	await new Promise((r) => setTimeout(r, 3000));
+
+	let done = 0;
+	let lost = 0;
+	for (const scenario of FIRST_EXPERIMENT_SCENARIOS) {
+		for (const mode of FIRST_EXPERIMENT_MODES) {
+			for (let repeat = 1; repeat <= FIRST_EXPERIMENT_REPEATS; repeat += 1) {
+				done += 1;
+				try {
+					const { metrics } = await runScenario(scenario, mode, repeat, {
+						resultsTimestamp: stamp,
+					});
+					console.error(
+						`[experiment] ${done}/${total} ${scenario}/${mode}/${repeat} → success=${metrics.success} tokens=${metrics.tokensTotal} stopReason=${metrics.stopReason}`,
+					);
+				} catch (e) {
+					lost += 1;
+					console.error(
+						`[experiment] ${done}/${total} ${scenario}/${mode}/${repeat} LOST: ${(e as Error).message}`,
+					);
+				}
+			}
+		}
+	}
+
+	if (lost > 0) {
+		console.error(
+			`[experiment] ${lost}/${total} cells lost (tolerance: ${FIRST_EXPERIMENT_LOST_CELLS_TOLERANCE})`,
+		);
+	}
+
+	await generateReport(resultsDir);
+	console.error(`[experiment] wrote ${join(resultsDir, "summary.md")}`);
+
+	if (lost > FIRST_EXPERIMENT_LOST_CELLS_TOLERANCE) process.exit(1);
+}
+
 // Only dispatch CLI when invoked as a script — importing run.ts (e.g. from
 // run.test.ts) must not exit the process.
 if (import.meta.main) {
@@ -326,9 +406,11 @@ if (import.meta.main) {
 		await runScenarioFromCli(process.argv.slice(3));
 	} else if (subcommand === "report") {
 		await runReportFromCli(process.argv.slice(3));
+	} else if (subcommand === "experiment") {
+		await runExperimentFromCli(process.argv.slice(3));
 	} else {
 		console.error(
-			"usage:\n  bun harness/run.ts smoke\n  bun harness/run.ts scenario <id> <baseline|mira> [--repeat N]\n  bun harness/run.ts report <resultsDir>",
+			"usage:\n  bun harness/run.ts smoke\n  bun harness/run.ts scenario <id> <baseline|mira> [--repeat N]\n  bun harness/run.ts report <resultsDir>\n  bun harness/run.ts experiment first",
 		);
 		process.exit(2);
 	}
