@@ -1,17 +1,23 @@
-// `mira hooks` subcommand — installs/uninstalls/lists Mira's PreToolUse(Bash)
-// hook in Claude Code's user-scope settings.json.
+// `mira hooks` subcommand — install/uninstall/status the Mira PreToolUse(Bash)
+// hook in Claude Code's settings.json.
 //
-// The pure operations on the settings shape are exported separately so they
-// can be tested without touching the filesystem; the CLI entry `runHooks`
-// wires them to `~/.claude/settings.json` and provides the user-facing output.
+// Pure operations on the settings shape are exported separately (no I/O) so
+// they can be unit-tested. The CLI entry `runHooks` wires them to the actual
+// settings file (`~/.claude/settings.json` for user scope or
+// `<cwd>/.claude/settings.json` for project scope) with an atomic write and
+// optional diff/dry-run output.
 //
-// Schema reference (subset):
-//   settings.hooks.PreToolUse: Array<{ matcher?; hooks: Array<{ type: "command"; command; ... }> }>
-//
-// Liberal in what we accept (existing entries may carry `timeout`,
-// `statusMessage`, etc.); conservative in what we emit (only `type` + `command`).
+// Liberal in what we accept (existing entries may carry extra fields like
+// `timeout`, `statusMessage`); conservative in what we emit.
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	readFileSync,
+	renameSync,
+	unlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -23,7 +29,12 @@ export function getDefaultClaudeHookScript(): string {
 	return resolve(REPO_ROOT, "hooks", "claude", "mira-rewrite.sh");
 }
 
-export function getDefaultClaudeSettingsPath(): string {
+export type SettingsScope = "user" | "project";
+
+export function resolveSettingsPath(scope: SettingsScope): string {
+	if (scope === "project") {
+		return resolve(process.cwd(), ".claude", "settings.json");
+	}
 	return resolve(homedir(), ".claude", "settings.json");
 }
 
@@ -59,6 +70,9 @@ function ensurePreToolUse(settings: ClaudeSettings): HookEntry[] {
 	return hooks.PreToolUse as HookEntry[];
 }
 
+// Exact-match: previously this used `String.includes` which false-positives
+// when one configured path is a prefix of another (e.g.
+// `/foo/mira-rewrite.sh.bak` contains `/foo/mira-rewrite.sh`). Now exact only.
 export function isClaudeHookInstalled(
 	settings: ClaudeSettings,
 	scriptPath: string,
@@ -68,11 +82,7 @@ export function isClaudeHookInstalled(
 	for (const entry of pre) {
 		if (!Array.isArray(entry?.hooks)) continue;
 		for (const h of entry.hooks) {
-			if (h?.type === "command" && typeof h.command === "string") {
-				if (h.command === scriptPath || h.command.includes(scriptPath)) {
-					return true;
-				}
-			}
+			if (h?.type === "command" && h.command === scriptPath) return true;
 		}
 	}
 	return false;
@@ -117,16 +127,14 @@ export function uninstallClaudeHook(
 		const before = entry.hooks.length;
 		entry.hooks = entry.hooks.filter((h) => {
 			if (h?.type !== "command" || typeof h.command !== "string") return true;
-			return h.command !== scriptPath && !h.command.includes(scriptPath);
+			return h.command !== scriptPath;
 		});
 		if (entry.hooks.length !== before) changed = true;
-		// Drop the entry entirely if we emptied its hooks list.
 		if (entry.hooks.length === 0) {
 			pre.splice(i, 1);
 		}
 	}
 
-	// Drop the PreToolUse array if we emptied it; same for hooks{}.
 	const root = next as { hooks?: Record<string, unknown> };
 	if (root.hooks && Array.isArray(root.hooks.PreToolUse)) {
 		const arr = root.hooks.PreToolUse as HookEntry[];
@@ -164,7 +172,7 @@ export function listHooks(settings: ClaudeSettings): HookStatusRow[] {
 					event,
 					matcher,
 					command: h.command,
-					isMira: h.command.includes("mira-rewrite.sh"),
+					isMira: h.command.endsWith("mira-rewrite.sh"),
 				});
 			}
 		}
@@ -172,27 +180,37 @@ export function listHooks(settings: ClaudeSettings): HookStatusRow[] {
 	return rows;
 }
 
-// ── CLI handler ────────────────────────────────────────────────────
+export type DiffRow =
+	| { kind: "added"; row: HookStatusRow }
+	| { kind: "removed"; row: HookStatusRow };
 
-const USAGE = `usage: mira hooks <command>
-
-Commands:
-  install --agent claude   Install the PreToolUse(Bash) hook in ~/.claude/settings.json
-  uninstall --agent claude Remove Mira's hook entry; preserve unrelated hooks
-  status                   List all hooks currently installed in ~/.claude/settings.json
-`;
-
-function parseAgent(args: string[]): "claude" | null {
-	const idx = args.indexOf("--agent");
-	if (idx === -1 || idx === args.length - 1) return null;
-	const value = args[idx + 1];
-	return value === "claude" ? "claude" : null;
+export function diffHooks(
+	before: ClaudeSettings,
+	after: ClaudeSettings,
+): DiffRow[] {
+	const beforeRows = listHooks(before);
+	const afterRows = listHooks(after);
+	const key = (r: HookStatusRow) => `${r.event}/${r.matcher}/${r.command}`;
+	const beforeKeys = new Set(beforeRows.map(key));
+	const afterKeys = new Set(afterRows.map(key));
+	const out: DiffRow[] = [];
+	for (const r of afterRows) {
+		if (!beforeKeys.has(key(r))) out.push({ kind: "added", row: r });
+	}
+	for (const r of beforeRows) {
+		if (!afterKeys.has(key(r))) out.push({ kind: "removed", row: r });
+	}
+	return out;
 }
+
+// ── I/O helpers ────────────────────────────────────────────────────
 
 function readSettings(path: string): ClaudeSettings {
 	if (!existsSync(path)) return {};
 	try {
 		const raw = readFileSync(path, "utf8");
+		const trimmed = raw.trim();
+		if (trimmed.length === 0) return {};
 		return JSON.parse(raw) as ClaudeSettings;
 	} catch (e) {
 		throw new Error(
@@ -201,8 +219,84 @@ function readSettings(path: string): ClaudeSettings {
 	}
 }
 
-function writeSettings(path: string, settings: ClaudeSettings): void {
-	writeFileSync(path, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
+// Atomic write: write to a temp file in the same directory, then rename.
+// Same-filesystem rename is atomic on POSIX, so a partial write or crash
+// leaves the original file untouched.
+function atomicWriteSettings(path: string, settings: ClaudeSettings): void {
+	const dir = dirname(path);
+	mkdirSync(dir, { recursive: true });
+	const tmp = resolve(dir, `.mira-hooks-${process.pid}-${Date.now()}.json.tmp`);
+	try {
+		writeFileSync(tmp, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
+		renameSync(tmp, path);
+	} catch (err) {
+		try {
+			unlinkSync(tmp);
+		} catch {
+			// best-effort cleanup
+		}
+		throw err;
+	}
+}
+
+// ── CLI handler ────────────────────────────────────────────────────
+
+const USAGE = `usage: mira hooks <command> [flags]
+
+Commands:
+  install    Add Mira's PreToolUse(Bash) hook
+  uninstall  Remove Mira's PreToolUse(Bash) hook (preserves other hooks)
+  status     List hooks currently configured
+
+Flags:
+  --agent claude        Required for install/uninstall (only Claude is supported)
+  --scope user|project  Settings file to act on (default: user)
+  --dry-run             Print what would change; do not write
+  --verbose             Print the full diff and resolved paths
+`;
+
+type ParsedArgs = {
+	agent: "claude" | null;
+	scope: SettingsScope;
+	dryRun: boolean;
+	verbose: boolean;
+};
+
+function parseArgs(args: string[]): ParsedArgs {
+	let agent: "claude" | null = null;
+	let scope: SettingsScope = "user";
+	let dryRun = false;
+	let verbose = false;
+	for (let i = 0; i < args.length; i++) {
+		const a = args[i];
+		if (a === "--agent") {
+			const v = args[++i];
+			agent = v === "claude" ? "claude" : null;
+		} else if (a === "--scope") {
+			const v = args[++i];
+			if (v === "user" || v === "project") scope = v;
+		} else if (a === "--dry-run") {
+			dryRun = true;
+		} else if (a === "--verbose") {
+			verbose = true;
+		}
+	}
+	return { agent, scope, dryRun, verbose };
+}
+
+function describeRow(row: HookStatusRow): string {
+	const tag = row.isMira ? "[mira]" : "      ";
+	return `  ${tag} ${row.event}/${row.matcher} → ${row.command}`;
+}
+
+function printDiff(diff: DiffRow[]): void {
+	for (const d of diff) {
+		const sign = d.kind === "added" ? "+" : "-";
+		const tag = d.row.isMira ? "[mira]" : "      ";
+		process.stdout.write(
+			`  ${sign} ${tag} ${d.row.event}/${d.row.matcher} → ${d.row.command}\n`,
+		);
+	}
 }
 
 export async function runHooks(args: string[]): Promise<number> {
@@ -212,14 +306,15 @@ export async function runHooks(args: string[]): Promise<number> {
 		return 2;
 	}
 
+	const parsed = parseArgs(args.slice(1));
+	const settingsPath = resolveSettingsPath(parsed.scope);
+	const scriptPath = getDefaultClaudeHookScript();
+
 	if (sub === "install") {
-		const agent = parseAgent(args.slice(1));
-		if (agent !== "claude") {
+		if (parsed.agent !== "claude") {
 			process.stderr.write("mira hooks install: expected --agent claude\n");
 			return 2;
 		}
-		const settingsPath = getDefaultClaudeSettingsPath();
-		const scriptPath = getDefaultClaudeHookScript();
 		if (!existsSync(scriptPath)) {
 			process.stderr.write(
 				`mira hooks install: hook script not found at ${scriptPath}\n`,
@@ -228,56 +323,84 @@ export async function runHooks(args: string[]): Promise<number> {
 		}
 		const before = readSettings(settingsPath);
 		const { settings: after, changed } = installClaudeHook(before, scriptPath);
+
 		if (!changed) {
-			process.stdout.write(`mira hooks: already installed at ${scriptPath}\n`);
+			process.stdout.write(
+				`mira hooks: already installed at ${settingsPath} → ${scriptPath}\n`,
+			);
 			return 0;
 		}
-		writeSettings(settingsPath, after);
+
+		const diff = diffHooks(before, after);
+		if (parsed.dryRun) {
+			process.stdout.write(
+				`mira hooks: --dry-run (no write) — ${settingsPath}\n`,
+			);
+			printDiff(diff);
+			return 0;
+		}
+
+		atomicWriteSettings(settingsPath, after);
+		process.stdout.write(`mira hooks: installed → ${settingsPath}\n`);
+		if (parsed.verbose) {
+			process.stdout.write(`mira hooks: script   = ${scriptPath}\n`);
+			printDiff(diff);
+		}
+
 		const coexisting = listHooks(after).filter(
 			(r) => r.event === "PreToolUse" && r.matcher === "Bash" && !r.isMira,
 		);
-		process.stdout.write(`mira hooks: installed → ${settingsPath}\n`);
-		process.stdout.write(`           script   = ${scriptPath}\n`);
 		if (coexisting.length > 0) {
 			process.stdout.write(
-				`           coexists with ${coexisting.length} other PreToolUse(Bash) hook(s):\n`,
+				`mira hooks: coexists with ${coexisting.length} other PreToolUse(Bash) hook(s)\n`,
 			);
-			for (const row of coexisting) {
-				process.stdout.write(`             - ${row.command}\n`);
+			if (parsed.verbose) {
+				for (const row of coexisting) {
+					process.stdout.write(`  - ${row.command}\n`);
+				}
 			}
 		}
 		process.stdout.write(
-			"           Reload via /hooks (or restart Claude Code) for the change to take effect.\n",
+			"mira hooks: reload via /hooks (or restart Claude Code) for the change to take effect.\n",
 		);
 		return 0;
 	}
 
 	if (sub === "uninstall") {
-		const agent = parseAgent(args.slice(1));
-		if (agent !== "claude") {
+		if (parsed.agent !== "claude") {
 			process.stderr.write("mira hooks uninstall: expected --agent claude\n");
 			return 2;
 		}
-		const settingsPath = getDefaultClaudeSettingsPath();
-		const scriptPath = getDefaultClaudeHookScript();
 		const before = readSettings(settingsPath);
 		const { settings: after, changed } = uninstallClaudeHook(
 			before,
 			scriptPath,
 		);
 		if (!changed) {
-			process.stdout.write(`mira hooks: not installed (nothing to remove)\n`);
+			process.stdout.write(
+				`mira hooks: not installed at ${settingsPath} (nothing to remove)\n`,
+			);
 			return 0;
 		}
-		writeSettings(settingsPath, after);
+
+		const diff = diffHooks(before, after);
+		if (parsed.dryRun) {
+			process.stdout.write(
+				`mira hooks: --dry-run (no write) — ${settingsPath}\n`,
+			);
+			printDiff(diff);
+			return 0;
+		}
+
+		atomicWriteSettings(settingsPath, after);
 		process.stdout.write(
 			`mira hooks: removed Mira entry from ${settingsPath}\n`,
 		);
+		if (parsed.verbose) printDiff(diff);
 		return 0;
 	}
 
 	if (sub === "status") {
-		const settingsPath = getDefaultClaudeSettingsPath();
 		const settings = readSettings(settingsPath);
 		const rows = listHooks(settings);
 		if (rows.length === 0) {
@@ -288,10 +411,7 @@ export async function runHooks(args: string[]): Promise<number> {
 		}
 		process.stdout.write(`mira hooks status (${settingsPath}):\n`);
 		for (const row of rows) {
-			const tag = row.isMira ? "[mira]" : "      ";
-			process.stdout.write(
-				`  ${tag} ${row.event}/${row.matcher} → ${row.command}\n`,
-			);
+			process.stdout.write(`${describeRow(row)}\n`);
 		}
 		return 0;
 	}

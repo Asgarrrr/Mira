@@ -1,7 +1,11 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import {
 	type ClaudeSettings,
+	diffHooks,
 	installClaudeHook,
 	isClaudeHookInstalled,
 	listHooks,
@@ -218,7 +222,7 @@ describe("uninstallClaudeHook", () => {
 	});
 });
 
-describe("isClaudeHookInstalled", () => {
+describe("isClaudeHookInstalled — exact match (P0 #2 fix)", () => {
 	test("matches an exact command path", () => {
 		const settings: ClaudeSettings = {
 			hooks: {
@@ -233,7 +237,25 @@ describe("isClaudeHookInstalled", () => {
 		expect(isClaudeHookInstalled(settings, SCRIPT)).toBe(true);
 	});
 
-	test("matches a substring (path embedded in larger command)", () => {
+	test("does NOT match a different path that contains scriptPath as a substring", () => {
+		// Regression for the original includes() check that false-positived on
+		// e.g. /foo/mira-rewrite.sh.bak vs /foo/mira-rewrite.sh.
+		const settings: ClaudeSettings = {
+			hooks: {
+				PreToolUse: [
+					{
+						matcher: "Bash",
+						hooks: [{ type: "command", command: `${SCRIPT}.bak` }],
+					},
+				],
+			},
+		};
+		expect(isClaudeHookInstalled(settings, SCRIPT)).toBe(false);
+	});
+
+	test("does NOT match a wrapper command embedding the script path", () => {
+		// Old behavior matched `bash ${SCRIPT}` via includes(). New exact-match
+		// rejects it: a wrapper has different identity.
 		const settings: ClaudeSettings = {
 			hooks: {
 				PreToolUse: [
@@ -244,7 +266,7 @@ describe("isClaudeHookInstalled", () => {
 				],
 			},
 		};
-		expect(isClaudeHookInstalled(settings, SCRIPT)).toBe(true);
+		expect(isClaudeHookInstalled(settings, SCRIPT)).toBe(false);
 	});
 
 	test("returns false when settings lacks PreToolUse", () => {
@@ -316,5 +338,195 @@ describe("listHooks", () => {
 		const first = rows[0];
 		if (!first) throw new Error("rows narrowing");
 		expect(first.matcher).toBe("*");
+	});
+});
+
+describe("diffHooks", () => {
+	test("flags an addition with kind: added", () => {
+		const before: ClaudeSettings = {};
+		const { settings: after } = installClaudeHook(before, SCRIPT);
+		const d = diffHooks(before, after);
+		expect(d).toHaveLength(1);
+		const first = at(d, 0);
+		expect(first.kind).toBe("added");
+		expect(first.row.command).toBe(SCRIPT);
+	});
+
+	test("flags a removal with kind: removed", () => {
+		const before: ClaudeSettings = {
+			hooks: {
+				PreToolUse: [
+					{
+						matcher: "Bash",
+						hooks: [{ type: "command", command: SCRIPT }],
+					},
+				],
+			},
+		};
+		const { settings: after } = uninstallClaudeHook(before, SCRIPT);
+		const d = diffHooks(before, after);
+		expect(d).toHaveLength(1);
+		const first = at(d, 0);
+		expect(first.kind).toBe("removed");
+		expect(first.row.command).toBe(SCRIPT);
+	});
+
+	test("returns [] when no changes", () => {
+		const settings: ClaudeSettings = {
+			hooks: {
+				PreToolUse: [
+					{
+						matcher: "Bash",
+						hooks: [{ type: "command", command: "rtk hook claude" }],
+					},
+				],
+			},
+		};
+		expect(diffHooks(settings, settings)).toEqual([]);
+	});
+});
+
+// Integration tests for the runHooks CLI handler — exercises atomic write,
+// JSON parsing, and the --scope/--dry-run/--verbose flags against a real
+// (but isolated) filesystem.
+describe("runHooks (integration)", () => {
+	const tempDirs: string[] = [];
+
+	afterEach(() => {
+		while (tempDirs.length > 0) {
+			const dir = tempDirs.pop();
+			if (dir) rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	function makeProjectDir(initial?: ClaudeSettings): {
+		dir: string;
+		settingsPath: string;
+	} {
+		const dir = mkdtempSync(join(tmpdir(), "mira-hooks-itest-"));
+		tempDirs.push(dir);
+		const settingsPath = join(dir, ".claude", "settings.json");
+		if (initial) {
+			require("node:fs").mkdirSync(join(dir, ".claude"), { recursive: true });
+			require("node:fs").writeFileSync(
+				settingsPath,
+				JSON.stringify(initial, null, 2),
+			);
+		}
+		return { dir, settingsPath };
+	}
+
+	async function withCwd<T>(dir: string, fn: () => Promise<T>): Promise<T> {
+		const prior = process.cwd();
+		process.chdir(dir);
+		try {
+			return await fn();
+		} finally {
+			process.chdir(prior);
+		}
+	}
+
+	test("install --scope project --dry-run does not write the file", async () => {
+		const { dir, settingsPath } = makeProjectDir();
+		const { runHooks } = await import("../src/cli/hooks.ts");
+		await withCwd(dir, () =>
+			runHooks([
+				"install",
+				"--agent",
+				"claude",
+				"--scope",
+				"project",
+				"--dry-run",
+			]),
+		);
+		expect(existsSync(settingsPath)).toBe(false);
+	});
+
+	test("install --scope project writes settings.json atomically", async () => {
+		const { dir, settingsPath } = makeProjectDir();
+		const { runHooks } = await import("../src/cli/hooks.ts");
+		const code = await withCwd(dir, () =>
+			runHooks(["install", "--agent", "claude", "--scope", "project"]),
+		);
+		expect(code).toBe(0);
+		expect(existsSync(settingsPath)).toBe(true);
+		const written = JSON.parse(readFileSync(settingsPath, "utf8")) as Record<
+			string,
+			unknown
+		>;
+		const pre = (written.hooks as Record<string, unknown>).PreToolUse as Array<{
+			matcher: string;
+			hooks: Array<{ command: string }>;
+		}>;
+		const entry = at(pre, 0);
+		expect(entry.matcher).toBe("Bash");
+		expect(at(entry.hooks, 0).command.endsWith("mira-rewrite.sh")).toBe(true);
+	});
+
+	test("install is idempotent — second invocation is a no-op", async () => {
+		const { dir, settingsPath } = makeProjectDir();
+		const { runHooks } = await import("../src/cli/hooks.ts");
+		await withCwd(dir, () =>
+			runHooks(["install", "--agent", "claude", "--scope", "project"]),
+		);
+		const firstWrite = readFileSync(settingsPath, "utf8");
+		await withCwd(dir, () =>
+			runHooks(["install", "--agent", "claude", "--scope", "project"]),
+		);
+		const secondWrite = readFileSync(settingsPath, "utf8");
+		expect(secondWrite).toBe(firstWrite);
+	});
+
+	test("uninstall --scope project removes the entry and preserves siblings", async () => {
+		const { dir, settingsPath } = makeProjectDir({
+			permissions: { allow: ["Bash(git *)"] },
+			hooks: {
+				PostToolUse: [
+					{
+						matcher: "Write|Edit",
+						hooks: [{ type: "command", command: "format.sh" }],
+					},
+				],
+			},
+		});
+		const { runHooks } = await import("../src/cli/hooks.ts");
+		await withCwd(dir, () =>
+			runHooks(["install", "--agent", "claude", "--scope", "project"]),
+		);
+		await withCwd(dir, () =>
+			runHooks(["uninstall", "--agent", "claude", "--scope", "project"]),
+		);
+		const after = JSON.parse(readFileSync(settingsPath, "utf8")) as Record<
+			string,
+			unknown
+		>;
+		// PreToolUse should be gone; PostToolUse and permissions preserved.
+		const hooks = after.hooks as Record<string, unknown>;
+		expect(hooks.PreToolUse).toBeUndefined();
+		expect(hooks.PostToolUse).toBeDefined();
+		expect(after.permissions).toEqual({ allow: ["Bash(git *)"] });
+	});
+
+	test("install --agent without value rejects", async () => {
+		const { dir } = makeProjectDir();
+		const { runHooks } = await import("../src/cli/hooks.ts");
+		const code = await withCwd(dir, () =>
+			runHooks(["install", "--scope", "project"]),
+		);
+		expect(code).toBe(2);
+	});
+
+	test("does not leave a tmp file behind on a successful write", async () => {
+		const { dir, settingsPath } = makeProjectDir();
+		const { runHooks } = await import("../src/cli/hooks.ts");
+		await withCwd(dir, () =>
+			runHooks(["install", "--agent", "claude", "--scope", "project"]),
+		);
+		const dotClaude = join(dir, ".claude");
+		const fs = require("node:fs");
+		const entries = fs.readdirSync(dotClaude) as string[];
+		// Only settings.json should remain; no .mira-hooks-*.json.tmp leftovers.
+		expect(entries.filter((e) => e.includes(".tmp"))).toEqual([]);
+		expect(existsSync(settingsPath)).toBe(true);
 	});
 });

@@ -2,18 +2,40 @@
 
 `mira-rewrite.sh` is the `PreToolUse(Bash)` delegate for Claude Code. Hook protocol reference: [Claude Code hooks documentation](https://docs.claude.com/en/docs/claude-code/hooks).
 
+## Architecture
+
+```
+Claude Code
+   │  stdin: { "tool_input": { "command": "git status" } }
+   ▼
+hooks/claude/mira-rewrite.sh   (~20 lines, portable; resolves repo from $BASH_SOURCE)
+   │  exec bun "$MIRA_REPO/src/cli/index.ts" rewrite --client claude
+   ▼
+mira rewrite                   (src/cli/rewrite.ts; all logic, all tests)
+   │  stdout: { "hookSpecificOutput": { "permissionDecision": "allow", "updatedInput": { "command": "..." } } }
+   ▼
+Claude Code substitutes the rewritten command; bash runs `mira run "git status"`
+```
+
 ## Install
 
 ```
-bun src/cli/index.ts hooks install --agent claude
+mira hooks install --agent claude
 ```
 
-The installer:
+Patches `~/.claude/settings.json`:
 
-1. Locates `~/.claude/settings.json` (creates it if missing).
-2. Adds an entry under `hooks.PreToolUse` matched on `Bash`, pointing at the absolute path of `mira-rewrite.sh` in this checkout.
-3. Preserves any existing hooks on the same matcher (chained execution; e.g. RTK then Mira).
-4. Idempotent: re-running detects an existing entry and is a no-op.
+- Locates the existing `PreToolUse` entry with `matcher: "Bash"`, or creates one.
+- Appends a `{ "type": "command", "command": "<absolute path to mira-rewrite.sh>" }` entry to its `hooks` array.
+- Preserves any existing hooks on the same matcher (chained execution; e.g. RTK then Mira).
+- Idempotent: re-running detects an existing entry and is a no-op.
+- Atomic: writes to a sibling `.tmp` file then renames.
+
+For project-scope (`<cwd>/.claude/settings.json` instead of user-scope):
+
+```
+mira hooks install --agent claude --scope project
+```
 
 ## Hook protocol
 
@@ -38,35 +60,47 @@ The installer:
 
 ## Requirements
 
-- `jq` (used to extract `tool_input.command` and produce shell-safe escaping via `@sh`)
-- Either `mira` on `$PATH` or `MIRA_CMD` env override:
-  ```
-  MIRA_CMD="/usr/local/bin/mira"   # or
-  MIRA_CMD="bun /abs/path/Mira/src/cli/index.ts"
-  ```
+- `bun` on PATH at hook-fire time. If absent, the script falls back to silent passthrough rather than crashing the agent's tool call.
+- (Test-only) `jq` for `test-mira-rewrite.sh`. Not used by the production hook.
+
+Override the bun invocation via `MIRA_CMD` env if `bun` is in an unusual location:
+
+```
+export MIRA_CMD="/opt/bun/bin/bun /Users/me/code/Mira/src/cli/index.ts"
+```
 
 ## Skip rules
 
-The hook returns passthrough (exit 0, no stdout) for any command matching:
+Implemented in `src/cli/rewrite.ts:shouldSkip`. The hook returns passthrough for:
 
 - Already wrapped: starts with `mira run` or contains `src/cli/index.ts run`
-- Interactive / TTY: `vim`, `nvim`, `nano`, `emacs`, `less`, `more`, `top`, `htop`, `tail -f`, `watch`
-- Watchers: any `--watch`
-- Backgrounded: trailing ` &` or ` &;`
-- Heredocs: contains `<<`
+- Interactive programs (first-token exact match): `vim`, `nvim`, `vi`, `nano`, `emacs`, `pico`, `less`, `more`, `top`, `htop`, `man`, `info`
+- `tail -f` (with any leading flags)
+- `watch <cmd>` and `--watch` flag (word-anchored)
+- Trailing ` &` / ` &;` / ` &|` (excluding `&&`)
+- Heredocs (` << EOF`, ` <<- 'EOF'`)
 
-Patterns live in the two `case "$CMD"` blocks. Edit there to add skips.
+Unit tests in `tests/cli-rewrite.test.ts` cover both happy-path skips and the false-positive guards (`bunvim` not skipped, `&&` not skipped, etc.).
 
 ## Coexistence with RTK
 
 If `~/.claude/settings.json` already has an `rtk hook claude` entry on `PreToolUse(Bash)`, the installer adds Mira as a second hook in the same matcher's `hooks` array. Claude Code chains them in declaration order; with RTK first and Mira second, the agent's command goes RTK-rewritten before Mira wraps it (`git status` → `rtk git status` → `mira run 'rtk git status'`). RTK compresses, Mira observes the compressed output.
 
 To remove only Mira's entry while keeping RTK:
+
 ```
-bun src/cli/index.ts hooks uninstall --agent claude
+mira hooks uninstall --agent claude
 ```
 
 ## Testing the hook in isolation
+
+End-to-end (pipes payloads through the real shell + bun + TS):
+
+```
+bash hooks/claude/test-mira-rewrite.sh
+```
+
+Or one-shot:
 
 ```
 printf '%s' '{"tool_input":{"command":"git status"}}' | bash hooks/claude/mira-rewrite.sh
