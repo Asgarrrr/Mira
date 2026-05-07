@@ -1,0 +1,22 @@
+{
+  "scenario": "B1",
+  "mode": "mira",
+  "repeat": 1,
+  "model": "claude-sonnet-4-6",
+  "success": true,
+  "stopReason": "model_end",
+  "turns": 14,
+  "tokensInput": 25330,
+  "tokensOutput": 4470,
+  "tokensTotal": 29800,
+  "toolCalls": 15,
+  "toolCallsByName": {
+    "bash": 9,
+    "read": 4,
+    "generate_context_pack": 1,
+    "write": 1
+  },
+  "filesRead": 4,
+  "filesModified": 1,
+  "wallClockMs": 70000
+}

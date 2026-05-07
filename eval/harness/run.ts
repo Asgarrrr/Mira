@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import type Anthropic from "@anthropic-ai/sdk";
 
 import { runAgent } from "./agent.ts";
+import { generateReport } from "./report.ts";
 import { applyScenario, checkScenario, loadScenario } from "./scenario.ts";
 import { makeBashTool } from "./tools/bash.ts";
 import { grepTool } from "./tools/grep.ts";
@@ -304,6 +305,17 @@ async function runSmoke(): Promise<void> {
 	console.log("[smoke] OK");
 }
 
+async function runReportFromCli(argv: string[]): Promise<void> {
+	const dir = argv[0];
+	if (!dir) {
+		console.error("usage: bun harness/run.ts report <resultsDir>");
+		process.exit(2);
+	}
+	const resolved = resolve(dir);
+	await generateReport(resolved);
+	console.log(`[report] wrote ${join(resolved, "summary.md")}`);
+}
+
 // Only dispatch CLI when invoked as a script — importing run.ts (e.g. from
 // run.test.ts) must not exit the process.
 if (import.meta.main) {
@@ -312,9 +324,11 @@ if (import.meta.main) {
 		await runSmoke();
 	} else if (subcommand === "scenario") {
 		await runScenarioFromCli(process.argv.slice(3));
+	} else if (subcommand === "report") {
+		await runReportFromCli(process.argv.slice(3));
 	} else {
 		console.error(
-			"usage:\n  bun harness/run.ts smoke\n  bun harness/run.ts scenario <id> <baseline|mira> [--repeat N]",
+			"usage:\n  bun harness/run.ts smoke\n  bun harness/run.ts scenario <id> <baseline|mira> [--repeat N]\n  bun harness/run.ts report <resultsDir>",
 		);
 		process.exit(2);
 	}

@@ -38,4 +38,5 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 # eval harness artefacts (transcripts, ephemeral workdirs)
 eval/results/
+eval/harness/__fixtures__/synthetic-results/summary.md
 
