@@ -1,0 +1,13 @@
+diff --git a/src/context/context-pack-generator.ts b/src/context/context-pack-generator.ts
+index ee9cc9a..40c7b7e 100644
+--- a/src/context/context-pack-generator.ts
++++ b/src/context/context-pack-generator.ts
+@@ -14,7 +14,7 @@ export type BuildContextPackInput = {
+ 	architectureSignals?: ArchitectureSignal[];
+ };
+ 
+-const SUSPECTED_FILES_CAP = 20;
++const SUSPECTED_FILES_CAP = 10;
+ 
+ const KIND_ORDER: readonly ArchitectureSignalKind[] = [
+ 	"changed-file",

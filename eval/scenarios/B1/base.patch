@@ -1,0 +1,13 @@
+diff --git a/src/core/command-observation.ts b/src/core/command-observation.ts
+index 2313a81..095c676 100644
+--- a/src/core/command-observation.ts
++++ b/src/core/command-observation.ts
+@@ -25,7 +25,7 @@ export const commandObservationSchema = z.object({
+ 	relatedFiles: z.array(z.string()),
+ 	suggestedNextActions: z.array(z.string()),
+ 	verificationHints: z.array(z.string()),
+-	evidenceRefs: z.array(evidenceRefSchema),
++	evidenceRefs: evidenceRefSchema,
+ });
+ 
+ export type CommandObservation = z.infer<typeof commandObservationSchema>;

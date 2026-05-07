@@ -1,0 +1,1 @@
+`bun test` is failing. Two assertions on observation summary strings no longer match because the verbs that report exit status have been swapped. Find the implementation that builds the summary and restore the correct verbs without breaking other tests.

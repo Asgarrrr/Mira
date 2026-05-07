@@ -1,0 +1,1 @@
+A unit test named "handles rename status without leaking OLD path" is failing. Find the bug and make it pass without breaking the other tests.
