@@ -1,0 +1,30 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`generateReport — committed synthetic fixtures produces stable Win-verdict markdown (snapshot) 1`] = `
+"# Mira eval — first experiment summary
+
+| scenario | baseline median | mira median | Δ% | baseline success | mira success | mira tools (top 3) | verdict |
+|---|---:|---:|---:|---:|---:|---|---|
+| A1 | 14000 | 9000 | -35.7% | 100% | 100% | bash(9), read(6), generate_context_pack(3) | Win |
+| A2 | 12000 | 9000 | -25.0% | 100% | 100% | bash(9), read(6), generate_context_pack(3) | Win |
+| A3 | 10000 | 7500 | -25.0% | 100% | 100% | bash(6), read(6), generate_context_pack(3) | Win |
+| B1 | 25000 | 30000 | +20.0% | 100% | 100% | bash(27), read(12), generate_context_pack(3) | Loss |
+
+## Verdict
+
+Global: **Win** (Win=3, Loss=1, Neutral=0, scenarios=4)
+
+> Note: B1 is the scenario where Mira's structural advantage is expected to be most visible. A B1 Loss alone is enough to question the hypothesis even if A1–A3 land Neutral.
+
+## Honesty axis
+
+- N=3 per cell — one bad run shifts the median, so close calls should not be over-read.
+- Synthetic scenarios know the answer; over-suggestive task wording can leak it.
+- Mira's opt-in advantage only materializes when the agent chooses to skip raw fetches; if Sonnet always fetches everything, Wins won't surface on a single-shot task.
+- A1–A3 run on Mira's own small codebase, where context selection has little room to differentiate. B1 has more headroom (large typecheck output).
+- SDK-level token accounting may diverge from production tools (cache reads, etc.). The harness itself is the instrument; if it is wrong, every result is wrong.
+
+---
+_resultsDir: \`<resultsDir>\` · generated: <iso-timestamp>_
+"
+`;
