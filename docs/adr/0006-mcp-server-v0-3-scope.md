@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Superseded by ADR 0007 (in part). This ADR's transport choice (stdio), SDK choice (`@modelcontextprotocol/sdk`), `projectRoot` invariant, and error envelope still hold. The five-tool list does not: ADR 0007 deprecated and removed `run_command`, `get_observation`, and `get_raw_evidence`. The current insight surface is `generate_context_pack` and `list_recent_runs`.
 
 ## Context
 

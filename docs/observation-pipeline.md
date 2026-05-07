@@ -18,7 +18,7 @@ observation builder           produces CommandObservation (markdown + JSON)
 stdout: passthrough + footer  agent sees the original output verbatim
 ```
 
-V0.1 adds `ContextPack` as a Tier-2 view (last 10 observations bundled). V0.2 adds `senseArchitecture` → `suspectedFiles[]`. V0.3 exposes the kernels through 5 MCP tools.
+V0.1 adds `ContextPack` as a Tier-2 view (last 10 observations bundled). V0.2 adds `senseArchitecture` → `suspectedFiles[]`. V0.3 exposes the insight kernels through MCP (per ADR 0007: `generate_context_pack`, `list_recent_runs`).
 
 What's missing: between *raw bytes captured* and *agent reads*, Mira does no transformation. The agent gets the same bytes as a naked shell. Token efficiency = 0% improvement vs no Mira.
 
@@ -170,7 +170,7 @@ EvidenceStore                 writes raw + observation.json (unchanged)
 observation builder           CommandObservation now carries findings + delta
   ↓
 stdout: compact (default)     findings rendered as compact text + pointers
-get_raw_evidence(ref): raw    raw bytes still one MCP call away
+.mira/runs/<id>/             raw bytes still on disk, captured by the hook
 ```
 
 Two principles preserved from V0:
@@ -183,7 +183,7 @@ Two principles preserved from V0:
 - **Parser registry layout.** Built-ins compiled in (Rust-style) vs. data-driven (TOML + small interpreter). Built-ins are simpler today but harder for users to override. Mirror RTK's TOML for the *fallback* layer (Slice D) and use compiled parsers for first-class tools (Slice A).
 - **Cascade rules.** Per-tool or per-rule-id? Probably per-tool with a default (cluster by `ruleId` + first identifier mentioned in `message`). Tunable in user TOML.
 - **Performance budget.** RTK target <10 ms. Mira does more (Finding parsing + cross-run diff). Target: <30 ms p95 on a 200-line `tsc` output. Benchmark in tests.
-- **MCP surface.** Does `get_observation` return `findings[]` inline, or a count + ref? Probably both: count inline, full array on a new `get_findings` tool.
+- **MCP surface.** If a future insight tool exposes findings, does it return `findings[]` inline, or a count + ref? Per ADR 0007, any new MCP tool needs its own design pass — this is a draft V0.4 question, not a commitment.
 - **Streaming (Axis bonus).** Long-running commands (dev servers, full builds) currently hold the harness for the entire duration. Streaming is out of V0.4 but the parser design should not preclude it.
 
 ## What this document deliberately is NOT

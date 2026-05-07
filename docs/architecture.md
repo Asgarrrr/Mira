@@ -242,7 +242,7 @@ The MCP Boundary is **not a kernel**. It is a single boundary file that re-expos
 Responsibilities:
 
 * speak the Model Context Protocol over stdio using `@modelcontextprotocol/sdk`
-* register exactly five tools: `run_command`, `get_observation`, `get_raw_evidence`, `generate_context_pack`, `list_recent_runs`
+* register the insight tools — currently `generate_context_pack` and `list_recent_runs` (ADR 0006 originally locked five; ADR 0007 deprecated and removed `run_command`, `get_observation`, and `get_raw_evidence`)
 * validate tool inputs (notably: every tool takes an explicit absolute `projectRoot`; the server never reads `process.cwd()` to resolve a project)
 * call the matching kernel and return the existing core type (`CommandObservation`, `ContextPack`, `EvidenceRef`) verbatim
 * report protocol-level failures via the SDK's `McpError` envelope (`INVALID_INPUT`, `NOT_FOUND`, `PATH_OUTSIDE_EVIDENCE`, `INTERNAL`)
@@ -250,7 +250,7 @@ Responsibilities:
 Non-responsibilities:
 
 * no new kernel, no new core type, no new persisted artifact
-* no truncation or summarization of `CommandObservation` or raw evidence (raw evidence is decoded UTF-8 with `U+FFFD` substitution; V0 evidence kinds are text-only — see ADR 0006 § `get_raw_evidence`)
+* no truncation or summarization of `CommandObservation` (raw evidence is captured by the hook layer — see ADR 0007)
 * no re-pagination or extension of `ContextPack.suspectedFiles` (the cap of 20 is enforced by the Context Kernel; ADR 0005)
 * no exposure of `ArchitectureSignal[]` outside the `generate_context_pack` pack projection
 * no plugin layer — clients cannot register new tools; the five tools are hard-coded

@@ -62,7 +62,7 @@ Out of scope for V0: interactive stdin/TTY commands, configurable timeout, outpu
 
 ## V0.3 scope
 
-V0.3 ships an MCP server (stdio, local) re-exposing the existing kernels — see `docs/adr/0006-mcp-server-v0-3-scope.md` for the original five-tool contract. Per `docs/adr/0007-hook-as-data-mcp-as-insight.md`, three of those tools (`run_command`, `get_observation`, `get_raw_evidence`) are deprecated. The durable surface going forward is the hook (`mira run` + evidence store) plus `list_recent_runs`; new MCP tools will be Sentrux-flavored insight queries added one at a time when a real need surfaces.
+V0.3 ships an MCP server (stdio, local) re-exposing the insight kernels. ADR 0006 originally locked five tools; ADR 0007 reframed the layering — hook = data, MCP = insight — and removed the three data-layer tools (`run_command`, `get_observation`, `get_raw_evidence`). The current surface is `generate_context_pack` and `list_recent_runs`. The durable surface going forward is the hook (`mira run` + evidence store) plus opt-in insight tools; new MCP tools will be Sentrux-flavored insight queries added one at a time when a real need surfaces.
 
 ## Core abstractions (V0)
 

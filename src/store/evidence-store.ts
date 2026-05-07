@@ -105,11 +105,9 @@ export class FileEvidenceStore {
 		if (!existsSync(this.runsDir)) return [];
 		// Walk newest-first and skip dirs whose observation.json is missing,
 		// unreadable, malformed JSON (H2), or JSON-valid-but-wrong-shape (M1,
-		// audit/05). One corrupt entry must not poison the projection —
-		// `get_observation(id)` still surfaces the failure per-row
-		// (single-target read → single-target failure). We must filter
-		// *while* iterating, not after slicing: a corrupt dir at the top of
-		// the sort would otherwise shrink the result below `limit` even when
+		// audit/05). One corrupt entry must not poison the projection. We must
+		// filter *while* iterating, not after slicing: a corrupt dir at the top
+		// of the sort would otherwise shrink the result below `limit` even when
 		// more valid observations exist behind it.
 		const observations: CommandObservation[] = [];
 		const entries = readdirSync(this.runsDir).sort().reverse();
