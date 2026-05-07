@@ -1,3 +1,4 @@
+import { TSC_FILTER_VERSION, tscFilter } from "./filters/tsc/index.ts";
 import type { Filter } from "./types.ts";
 
 // Each entry pairs a filter with a version string (e.g. `"tsc/1"`). The
@@ -6,4 +7,7 @@ import type { Filter } from "./types.ts";
 // persisted markdown (Axis 3, docs/observation-pipeline.md).
 export type RegistryEntry = { filter: Filter; version: string };
 
-export const REGISTRY: Map<string, RegistryEntry> = new Map();
+export const REGISTRY: Map<string, RegistryEntry> = new Map<
+	string,
+	RegistryEntry
+>([["tsc", { filter: tscFilter, version: TSC_FILTER_VERSION }]]);

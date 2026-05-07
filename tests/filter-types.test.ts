@@ -10,8 +10,11 @@ import type {
 } from "../src/filter/types.ts";
 
 describe("filter/registry", () => {
-	test("starts empty", () => {
-		expect(REGISTRY.size).toBe(0);
+	test("registers tsc with its version", () => {
+		const entry = REGISTRY.get("tsc");
+		expect(entry).toBeDefined();
+		expect(entry?.version).toBe("tsc/1");
+		expect(typeof entry?.filter).toBe("function");
 	});
 });
 
