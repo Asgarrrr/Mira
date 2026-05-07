@@ -1,5 +1,9 @@
 # Postmortem 001 — first eval, four-loss verdict
 
+## Caveat (post-hoc)
+
+This experiment tested a synthetic agent — a raw `messages.create()` loop with hand-rolled tool wrappers and no prompt caching — *not* Claude Code, which is the actual client of Mira. The Loss 4/4 verdict applies to that synthetic agent. Several of the mechanics that matter in production (CC's prompt caching, its system prompt, its tool descriptions, the fact that `mira-rewrite.sh` already wraps `bash` in CC's baseline) were absent here. Treat this run as calibration of the harness machinery, not as a verdict on Mira itself. The honest re-test is the subject of `docs/eval/06-second-experiment.md`.
+
 ## Verdict
 
 **Global: Loss (0 Win, 4 Loss, 0 Neutral).** Mira-augmented runs spent +14.5% to +111.3% more tokens than baseline on every scenario, including B1 where the structural opt-in advantage was supposed to be most visible. Success rates were equal (100% / 100%) on A1, A2, B1, and slightly worse on A3 (100% baseline → 67% mira) due to one wall-clock-cap failure. Mira in its V0 shape is not yet helping an agent on this corpus; in this configuration it is hurting.
