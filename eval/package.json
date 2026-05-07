@@ -2,15 +2,9 @@
 	"name": "mira-eval",
 	"type": "module",
 	"private": true,
-	"description": "Eval harness for Mira. Isolated from src/ runtime: @anthropic-ai/sdk lives here, never in the root package.",
+	"description": "Eval harness for Mira. Hosts the scenario runner + report aggregator. The agent loop has been removed; future runs will use Claude Code or similar headless clients.",
 	"scripts": {
-		"smoke": "bun harness/run.ts smoke",
-		"test:bash-sandbox": "bun harness/tools/bash-sandbox-tests.ts",
 		"typecheck": "tsc --noEmit"
-	},
-	"dependencies": {
-		"@anthropic-ai/sdk": "^0.94.0",
-		"@modelcontextprotocol/sdk": "^1.29.0"
 	},
 	"devDependencies": {
 		"@types/bun": "latest",
