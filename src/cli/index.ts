@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { runStdioServer } from "../mcp/server.ts";
 import { runContext } from "./context.ts";
-import { runHooks } from "./hooks.ts";
+import { runHooks } from "./hooks/index.ts";
 import { runRewrite } from "./rewrite.ts";
 import { runCommand } from "./run.ts";
 

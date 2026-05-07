@@ -10,7 +10,7 @@ import {
 	isClaudeHookInstalled,
 	listHooks,
 	uninstallClaudeHook,
-} from "../src/cli/hooks.ts";
+} from "../src/cli/hooks/settings.ts";
 
 const SCRIPT = "/abs/path/hooks/claude/mira-rewrite.sh";
 
@@ -428,7 +428,7 @@ describe("runHooks (integration)", () => {
 
 	test("install --scope project --dry-run does not write the file", async () => {
 		const { dir, settingsPath } = makeProjectDir();
-		const { runHooks } = await import("../src/cli/hooks.ts");
+		const { runHooks } = await import("../src/cli/hooks/index.ts");
 		await withCwd(dir, () =>
 			runHooks([
 				"install",
@@ -444,7 +444,7 @@ describe("runHooks (integration)", () => {
 
 	test("install --scope project writes settings.json atomically", async () => {
 		const { dir, settingsPath } = makeProjectDir();
-		const { runHooks } = await import("../src/cli/hooks.ts");
+		const { runHooks } = await import("../src/cli/hooks/index.ts");
 		const code = await withCwd(dir, () =>
 			runHooks(["install", "--agent", "claude", "--scope", "project"]),
 		);
@@ -465,7 +465,7 @@ describe("runHooks (integration)", () => {
 
 	test("install is idempotent — second invocation is a no-op", async () => {
 		const { dir, settingsPath } = makeProjectDir();
-		const { runHooks } = await import("../src/cli/hooks.ts");
+		const { runHooks } = await import("../src/cli/hooks/index.ts");
 		await withCwd(dir, () =>
 			runHooks(["install", "--agent", "claude", "--scope", "project"]),
 		);
@@ -489,7 +489,7 @@ describe("runHooks (integration)", () => {
 				],
 			},
 		});
-		const { runHooks } = await import("../src/cli/hooks.ts");
+		const { runHooks } = await import("../src/cli/hooks/index.ts");
 		await withCwd(dir, () =>
 			runHooks(["install", "--agent", "claude", "--scope", "project"]),
 		);
@@ -509,7 +509,7 @@ describe("runHooks (integration)", () => {
 
 	test("install --agent without value rejects", async () => {
 		const { dir } = makeProjectDir();
-		const { runHooks } = await import("../src/cli/hooks.ts");
+		const { runHooks } = await import("../src/cli/hooks/index.ts");
 		const code = await withCwd(dir, () =>
 			runHooks(["install", "--scope", "project"]),
 		);
@@ -518,7 +518,7 @@ describe("runHooks (integration)", () => {
 
 	test("does not leave a tmp file behind on a successful write", async () => {
 		const { dir, settingsPath } = makeProjectDir();
-		const { runHooks } = await import("../src/cli/hooks.ts");
+		const { runHooks } = await import("../src/cli/hooks/index.ts");
 		await withCwd(dir, () =>
 			runHooks(["install", "--agent", "claude", "--scope", "project"]),
 		);
