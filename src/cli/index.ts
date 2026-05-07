@@ -2,6 +2,7 @@
 import { runStdioServer } from "../mcp/server.ts";
 import { runContext } from "./context.ts";
 import { runHooks } from "./hooks.ts";
+import { runRewrite } from "./rewrite.ts";
 import { runCommand } from "./run.ts";
 
 const USAGE = `usage: mira <command> [args...]
@@ -11,6 +12,7 @@ Commands:
   context "<task>"    bundle the last 10 observations into a ContextPack
   mcp                 run the MCP server on stdio
   hooks <subcommand>  install/uninstall/status the PreToolUse hook for a client
+  rewrite             rewrite a hook payload (internal — invoked by hook script)
 `;
 
 async function main(): Promise<void> {
@@ -47,6 +49,11 @@ async function main(): Promise<void> {
 		}
 		case "hooks": {
 			const code = await runHooks(rest);
+			process.exit(code);
+			break;
+		}
+		case "rewrite": {
+			const code = await runRewrite(rest);
 			process.exit(code);
 			break;
 		}
