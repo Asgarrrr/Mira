@@ -62,11 +62,7 @@ Out of scope for V0: interactive stdin/TTY commands, configurable timeout, outpu
 
 ## V0.3 scope
 
-- Mira ships an MCP server (stdio, local) that re-exposes the existing kernels.
-- Exactly five tools, hard-coded: `run_command`, `get_observation`, `get_raw_evidence`, `generate_context_pack`, `list_recent_runs`.
-- Tools return existing types verbatim (`CommandObservation`, `ContextPack`, `EvidenceRef`); no new domain type.
-- Every tool takes an explicit absolute `projectRoot`; the server never reads `process.cwd()` to resolve a project.
-- Process-level outcomes (non-zero exit, signal, timeout) are reported via `CommandObservation` fields, never via MCP errors. See `docs/adr/0006-mcp-server-v0-3-scope.md`.
+V0.3 ships an MCP server (stdio, local) re-exposing the existing kernels — see `docs/adr/0006-mcp-server-v0-3-scope.md` for the original five-tool contract. Per `docs/adr/0007-hook-as-data-mcp-as-insight.md`, three of those tools (`run_command`, `get_observation`, `get_raw_evidence`) are deprecated. The durable surface going forward is the hook (`mira run` + evidence store) plus `list_recent_runs`; new MCP tools will be Sentrux-flavored insight queries added one at a time when a real need surfaces.
 
 ## Core abstractions (V0)
 
