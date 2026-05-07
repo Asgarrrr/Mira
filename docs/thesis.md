@@ -69,7 +69,7 @@ A good Mira output is short, structured, grounded, and immediately useful. The u
 
 The core stays boring. Clear types, explicit evidence links, deterministic heuristics, simple storage, replaceable adapters. No magic, no premature abstraction.
 
-The edges become smart later: LLM summarization, architecture signals, agent-specific workflows, MCP tools, dashboards, native performance modules. Each of these is added when an actual need arrives, not preemptively, and each must compose through the evidence model.
+The edges become smart later: deterministic distillers, architecture signals, MCP insight tools, native performance modules. Each of these is added when an actual need arrives, not preemptively, and each must compose through the evidence model.
 
 This split is what lets Mira accumulate capability without accumulating complexity. Kernels do not evolve to support new edges, because the contract between core and edges is the evidence model itself.
 

@@ -24,15 +24,12 @@ Raw bytes go to disk under `.mira/`, never overwritten. Structured observations 
 
 In two to three years, Mira is a local daemon that sits between the developer's workflow and any agent the developer uses. It wraps every command, captures every relevant signal, and builds a durable understanding of the project that survives across sessions. The agent never sees raw bytes — only structured observations with traceable links. The developer keeps a replayable trace of every action their agents took.
 
-Multiple surfaces, one spine:
+Two surfaces, one spine:
 
 - CLI for direct human use.
 - MCP server for any MCP-compatible client.
-- API for runtime integration.
-- IDE bindings for inline workflows.
-- Bridges into other agent runtimes as they appear.
 
-All of them expose the same evidence model. None of them is the product — the model is.
+Both expose the same evidence model. Neither is the product — the model is. No HTTP API, no IDE plugin, no dashboard, no inter-agent bridge: each of those would be a different product.
 
 The accumulation compounds. A project that has used Mira for six months has a body of evidence no fresh agent can match. New agents inherit it. New developers inherit it. The substrate accrues value the way a git history accrues value — but for agent-relevant facts, not source code.
 

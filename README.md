@@ -42,18 +42,16 @@ The substrate accumulates. A project that has lived with Mira for six months car
 
 ## Surfaces
 
-Each surface anchors to the same model. None of them is the product — the model is.
+Two local surfaces, one model.
 
 - **CLI** — `mira run`, `mira context`, `mira hooks install`. Direct human use, scripts, automatic agent capture.
 - **MCP server** — local stdio. Any MCP-compatible client (Claude Code, Cursor, Goose, Codex, …) consumes Mira through typed tools.
-- **API** — HTTP for runtime integrations and multi-project setups.
-- **IDE bindings** — VS Code, JetBrains. Inline context, no agent needed.
-- **Inter-agent bridges** — multiple agents working on the same project see each other's actions through the substrate.
 
 ## Quick start
 
 ```bash
-brew install mira
+# from a clone of this repo
+bun install && bun link
 mira run "bun test"
 ```
 

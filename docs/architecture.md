@@ -6,7 +6,7 @@ Mira's architecture follows from one constraint: every agent-facing conclusion m
 
 The system is split into **kernels** — small, single-responsibility units — rather than layered services. Each kernel either produces or consumes evidence and does nothing else. This keeps kernels independently testable, replaceable, and composable. The dependency direction is one-way by design: CLI and MCP adapt to the kernels, never the inverse.
 
-A separate **boundary layer** (the MCP server is the first instance) re-exposes kernels without becoming one. Boundaries translate; they do not produce evidence. Keeping them outside the kernel set lets new boundaries (HTTP, IDE bindings, agent-specific bridges) be added later without touching what kernels do.
+A separate **boundary layer** (the MCP server is the first instance) re-exposes kernels without becoming one. Boundaries translate; they do not produce evidence. Keeping them outside the kernel set lets a new boundary be added later without touching what kernels do — but no second boundary is planned. CLI and MCP are the only two surfaces Mira commits to.
 
 Two background principles run across the whole architecture:
 
