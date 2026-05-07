@@ -29,7 +29,7 @@ The bench is the **hard gate**. The soft gate is Task 09 (manual Claude Code A/B
 - `bench/README.md` — created (one paragraph: what `bench/` is, how it differs from `tests/` and `eval/`).
 - `bench/results/.gitkeep` — created (the trend-tracking directory; per-run JSON results land here).
 
-**No new runtime dependency for tokenization.** Token counts are read from the committed `tests/fixtures/tsc/tokens.json` (Task 04), itself produced via `anthropic.messages.count_tokens` at fixture capture time. The bench is fully offline at run time.
+**No new runtime dependency for tokenization.** Token counts are read from the committed `src/filter/filters/tsc/__fixtures__/tokens.json` (Task 04), itself produced via `anthropic.messages.count_tokens` at fixture capture time. The bench is fully offline at run time.
 
 ## Interface / API change
 
@@ -51,7 +51,7 @@ import { join } from "node:path";
 import { dispatchFilter } from "../../src/filter/dispatch.ts";
 import { parseTscOutputWithStats, clusterDiagnostics } from "../../src/filter/filters/tsc/parser.ts";
 
-const FIXTURE_DIR = join(import.meta.dirname, "..", "..", "tests", "fixtures", "tsc");
+const FIXTURE_DIR = join(import.meta.dirname, "..", "..", "src", "filter", "filters", "tsc", "__fixtures__");
 const RESULTS_DIR = join(import.meta.dirname, "..", "results");
 const FIXTURES = ["small.txt", "medium.txt", "large.txt"];
 
@@ -100,7 +100,7 @@ process.exit(result.passed && trendCheck.passed ? 0 : 1);
 
 **`benchOne` per fixture:**
 
-1. Read `tests/fixtures/tsc/<fixture>` as `raw`.
+1. Read `src/filter/filters/tsc/__fixtures__/<fixture>` as `raw`.
 2. Invoke via the dispatcher (so wrapper-stripping path is exercised in the bench too):
    `dispatchFilter("pnpm tsc --noEmit", { stdout: raw, stderr: "", exitCode: 2, durationMs: 0 }, { command: "pnpm tsc --noEmit", cwd: ".", runId: "bench" })`.
    The `pnpm` prefix forces the dispatcher to actually strip a wrapper before lookup. (REVIEW.md K.2.)

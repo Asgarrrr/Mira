@@ -99,7 +99,7 @@ bun tsc --noEmit
 Manual smoke test from the repo root:
 
 ```bash
-bun src/cli/index.ts run --quiet "bunx tsc --noEmit tests/fixtures/tsc/sources/small.ts"
+bun src/cli/index.ts run --quiet "bunx tsc --noEmit src/filter/filters/tsc/__fixtures__/sources/small.ts"
 ```
 
 Expected: compact markdown on stdout, `_evidence: .mira/runs/.../_` line, exit code non-zero, raw evidence in `.mira/runs/<id>/`.

@@ -259,30 +259,49 @@ For clusters of size 1 (no sibling), render as a normal single-finding bullet (n
 
 ---
 
-## 9c. RTK-derived patterns for Cluster B (deliberate steals)
+## 9c. Where Mira goes beyond RTK (Cluster B/C-relevant upgrades)
 
-A V0.4 review pass on [`rtk-ai/rtk`](https://github.com/rtk-ai/rtk) surfaced three concrete patterns that map onto Cluster B's renderer surface and file layout. They are explicit recommendations to the Cluster B designer, with rationale pinned here so the choice is not lost in conversation. **None are bound until `05-tsc-parser.md` commits — but each should be addressed (adopt or reject with reason) before that doc opens.**
+A V0.4 review pass on [`rtk-ai/rtk`](https://github.com/rtk-ai/rtk) surfaced patterns that map onto Cluster B/C's surface area. **RTK is one reference, not gospel.** Mira owns a typed `Finding[]` model that RTK does not, so each pattern below is reframed as the *Mira-native upgrade that goes beyond RTK*, not as RTK adoption. The Cluster B/C designer copies the upgrade, not the baseline.
 
-**1. Explicit recovery hint on every truncation.** When the renderer drops information (cluster of 60 locations rendered as 8 — § 9b cap), the markdown MUST emit a one-line pointer next to the cut, not only at the footer:
+**1. Recovery is line-precise + structured, not free-text "see X".**
+When the renderer drops information (cluster of 60 rendered as 8 — § 9b cap), the markdown emits a structured cut-marker next to the cut — not just a path string. RTK's `force_tee_hint()` (`src/core/tee.rs`) emits a free-text pointer; Mira does better because every `Finding` already carries `evidenceRefs[]` and `excerpts[].lineStart/lineEnd` — typed, line-precise, machine-readable.
 
 ```md
-  also: src/foo.ts:34:7, src/bar.ts:67:3, … +52 more — see `.mira/runs/<id>/combined.log`
+  also: src/foo.ts:34:7, src/bar.ts:67:3, … +52 more
+  (lines 142-198 of `.mira/runs/<id>/combined.log`)
 ```
 
-RTK calls this `force_tee_hint()` (`src/core/tee.rs`): the moment a filter cuts, the recovery path is force-emitted next to the cut so the agent never has to guess where the rest lives. Mira already emits `_evidence: .mira/runs/<id>/_` once at the markdown footer — that is the floor, not the ceiling. Per-cut hints are additive and compose with § 9b's "locations line" (suffix the tail). Reasoning: the agent reads markdown; if the markdown lies by omission without saying so in-line, the agent will not investigate.
+The cluster bullet's continuation includes the **line range** in `combined.log`, not just the file path. The agent fetches ~5 lines with `sed -n '142,198p'`, not a 200-line wall. **More elegant** (typed reference, not free text), **more powerful** (line-precise, not file-level), **more performant** (5-line fetch, not 200).
 
-**2. Short-circuit on success.** `findings.length === 0 && exitCode === 0` → render `# tsc — pass` and return. No template, no exemplar, no preservation-gate logic firing on empty input. RTK calls this shape `match_output` (`src/core/toml_filter.rs`): when the success pattern matches, the entire output is one line. Implement as an **early return** at the top of the renderer, not as a branch buried in a multi-section function. Reasoning: the most common case (passing build) should hit the shortest code path AND produce the shortest agent-facing output. The single-line success is also the most cache-stable prefix in the agent's prompt.
+**2. Success short-circuit is a typed guard, not a regex on output.**
+`findings.length === 0 && exitCode === 0` → render `# tsc — pass` and return. RTK's `match_output` regex-matches on output text (`^Found 0 errors`); Mira does better because the test runs on *already-computed structured data*. O(1) on the typed result, not regex over output bytes; composable with severity filters that RTK cannot express (`findings.filter(f => f.severity === 'error').length === 0`); cache-stable in the agent's prompt because the rendered prefix is deterministic on success.
 
-**3. Fixtures co-located with the filter.** § 11 currently parks fixtures under `tests/fixtures/tsc/`. RTK co-locates fixtures with the filter (`[[tests.foo]]` blocks inline in the TOML filter file). For TS we cannot inline tsc multi-line output in a string literal cleanly, but we *can* relocate the fixture directory:
+Implement as an **early return at the top of the renderer**, not a branch buried mid-function. The shortest case hits the shortest code path AND produces the shortest agent-facing output.
 
-- **Keep § 11** (tests-first): `tests/fixtures/tsc/` — consistent with existing Mira convention (`tests/fixtures/tsc-e2e/`, etc.).
-- **Co-locate** (filter-first): `src/filter/filters/tsc/__fixtures__/` — filter, parser, cluster, render, tests, AND fixtures move as one cohesive unit. Better when filters are added/removed/forked. The cost is a one-time inconsistency with the rest of `tests/fixtures/`.
+**3. Fixtures are real source files, not strings embedded in test cases.**
+RTK inlines `[[tests.foo]]` blocks of input/expected strings in TOML. Mira does better with real `.ts` files under `<fixtures-dir>/sources/` that anyone can compile and re-capture, real `.txt` outputs, real `tokens.json`. Plus: the capture script self-checks — it re-parses each fixture, asserts `parser(fixture).length === expected_count` (committed in `tokens.json` metadata), fails loudly on drift. Catches a TS upgrade silently breaking the regex in a way RTK's bundled tests cannot.
 
-Co-location is the SOTA move when filters become independent units (V0.5+ trajectory, § 11's "naming convention for V0.5+ filters"). **Decide before `05-tsc-parser.md` opens; update § 11's file layout if relocating.**
+**Decision (Task 04, 2026-05-07):** **co-locate** under `src/filter/filters/tsc/__fixtures__/`. Filter, parser, cluster, render, version, AND fixtures travel as one cohesive unit. The cost is a one-time inconsistency with `tests/fixtures/tsc-e2e/` — accepted because e2e fixtures back the CLI integration test, not the filter module itself. § 11's file-layout block, the V0.5+ naming convention, and Tasks 04 / 05 / 07 paths all reflect this choice.
 
-**Patterns deliberately *not* stolen from RTK** (recorded so the question is closed, not re-litigated):
+Rejected alternative: keep fixtures under `tests/fixtures/tsc/` (consistent with existing Mira convention). Cheaper today, but loses the cohesion that pays off when V0.5 adds a second filter — the convention either gets retrofitted or grows into a permanent divergence.
 
-- **Two-tier matching with overlap** (clap enum + TOML regex fallback) — RTK's "maintenance tax". Mira keeps a single `Map<string, Filter>` per § 4.
+### Other Mira-native upgrades on the table
+
+Listed so they are not lost; the Cluster C designer evaluates each and either adopts in V0.4 or pushes to V0.5 with a one-line rationale.
+
+a. **Cache-stable header.** Move duration `(1240ms)` from the `# tsc — N errors` header line to the footer. Add a stable hash of the structured findings payload in a footer comment: `<!-- mira: filterVersion=tsc/1 hash=abc123 -->`. Agents with prompt caching get hit-stable prefixes when re-runs produce the same set. RTK has no such concept because there's no structured payload to hash. **V0.4 candidate** (~10 LOC).
+
+b. **Severity-ranked rendering.** Findings sorted by severity (`error` > `warning` > `info`), then by cluster size, then by first-member path. Errors surface above warnings even when cluster sizes invert. RTK truncates at `max_lines` blindly. **V0.4 candidate** (~3 LOC, an extra sort key in `clusterDiagnostics`).
+
+c. **Quarantine, don't drop.** Lines the parser cannot match become `Finding[severity:"info", ruleId:"unparsed", excerpts: [...]]` instead of being silently discarded. The renderer emits a footer block: `⚠ 3 unparsed lines — see combined.log:42-44`. The agent KNOWS what was missed; the bench's parser-coverage gate (≥ 0.85) becomes a soft warning instead of a silent loss. **V0.5 candidate** — formalizes what the coverage gate already implies, but adds agent-visible behavior that should bake in V0.4 first.
+
+d. **Render-format negotiation.** `FilterContext.outputFormat: "markdown" | "json"`. Agents that prefer structured input (Codex, future MCP consumers) ask for JSON; Claude Code stays on markdown. RTK is text-only by design. **V0.5+** — V0.4 ships markdown-only, contract supports the rest.
+
+e. **Token-budgeted rendering.** Renderer takes a budget; if exceeded, emits top-K by severity + structured fallback link to `observation.json`. Agent reads the JSON when it wants the rest. RTK's `max_lines` is the unranked equivalent. **V0.5+** — needs the agent's token budget surfaced, which V0.4 does not have.
+
+### Patterns deliberately NOT copied (closed, do not re-litigate)
+
+- **Two-tier matching with overlap** (clap enum + TOML regex fallback) — RTK's "maintenance tax". Mira keeps a single `Map<string, RegistryEntry>` per § 4.
 - **Custom invocation rewrites** (e.g. RTK silently runs `git status --porcelain -b` instead of `git status`). Breaks ADR 0001's "raw evidence is what the tool actually emitted" contract; non-negotiable.
 - **`chars / 4` token heuristic** — RTK's only metric. Per § 10 we use Anthropic `count_tokens` against committed `tokens.json`; the bench rigor is a competitive advantage, not a parity concern.
 - **SQLite analytics layer** — RTK dedicates ~half of `src/core/` to it. `.mira/runs/<id>/` plus `mira list-recent-runs` covers the same surface for V0–V0.5.
@@ -297,10 +316,10 @@ Co-location is the SOTA move when filters become independent units (V0.5+ trajec
 
 **Metric.** `compression_ratio = tokens(filtered_stdout) / tokens(raw_stdout)`, computed on `N=3` committed fixtures (small, medium, large failures).
 
-**Tokenizer — authoritative.** Anthropic's `client.messages.count_tokens()` endpoint. Run **once at fixture-capture time** (Task 04) for the raw input, and once during bench development for the rendered output of every snapshot fixture; commit the resulting counts to `tests/fixtures/tsc/tokens.json` next to the `.txt` files. The bench reads pre-computed counts at run time — no network call during `bun bench/filter/tsc.ts`, no API key needed in CI, fully reproducible.
+**Tokenizer — authoritative.** Anthropic's `client.messages.count_tokens()` endpoint. Run **once at fixture-capture time** (Task 04) for the raw input, and once during bench development for the rendered output of every snapshot fixture; commit the resulting counts to `src/filter/filters/tsc/__fixtures__/tokens.json` next to the `.txt` files. The bench reads pre-computed counts at run time — no network call during `bun bench/filter/tsc.ts`, no API key needed in CI, fully reproducible.
 
 ```json
-// tests/fixtures/tsc/tokens.json (committed, regenerated when fixtures change)
+// src/filter/filters/tsc/__fixtures__/tokens.json (committed, regenerated when fixtures change)
 {
   "schema": "anthropic-count_tokens-v1",
   "model": "claude-opus-4-7",
@@ -392,15 +411,19 @@ tests/
   cli-run-filter.e2e.test.ts       integration — wiring (Task 03)
   cli-run-tsc.e2e.test.ts          integration — full pipeline (Task 06)
 
-  fixtures/tsc/                    (Task 04)
-    small.txt
-    medium.txt   (B1-shaped)
-    large.txt
-    sources/                       broken TS that produces the fixtures
-    snapshots/                     bun snapshot artefacts
-    README.md                      pinned TS version + capture procedure
   fixtures/tsc-e2e/                (Task 06) — minimal real project for e2e
+
+src/filter/filters/tsc/__fixtures__/   (Task 04 — co-located per § 9c)
+  small.txt
+  medium.txt        (B1-shaped)
+  large.txt
+  tokens.json       Anthropic count_tokens results (raw + filtered_expected)
+  sources/          broken TS that produces the fixtures
+  snapshots/        bun snapshot artefacts
+  README.md         pinned TS version + capture procedure
 ```
+
+**Why co-locate fixtures under `src/filter/filters/tsc/__fixtures__/`:** the fixtures, the parser/cluster/render modules, and the version tag move as one cohesive unit (RTK pattern, § 9c bullet 3). When V0.5 adds a second filter, `src/filter/filters/<program>/__fixtures__/` is the convention from day 1. The cost is a one-time inconsistency with `tests/fixtures/tsc-e2e/` (e2e fixtures stay in `tests/` because they back end-to-end CLI tests, not the filter module itself).
 
 **Why split `tsc.ts` into a directory from day 1, not "if it exceeds 320 LOC":** parsing, clustering, and rendering are three different concerns. Each has its own test file. Splitting later is a refactor that touches tests, snapshots, and possibly imports across the bench. Splitting from the start is one minute of mkdir; splitting later is a half-day chore. **State-of-the-art means the right shape from the start.**
 
@@ -453,7 +476,7 @@ These rules apply to the V0.4 PR. They become the convention for V0.5+ filters b
 - Glue file: `index.ts`, exports `<program>Filter: Filter` and `<PROGRAM>_FILTER_VERSION = "<program>/1"`
 - Sibling files by concern: `parser.ts`, `cluster.ts` (if needed), `render.ts`, `version.ts`
 - Tests: `tests/filter-<program>-<concern>.test.ts`
-- Fixtures: `tests/fixtures/<program>/{small,medium,large}.txt` + `sources/` + `README.md`
+- Fixtures (co-located): `src/filter/filters/<program>/__fixtures__/{small,medium,large}.txt` + `sources/` + `tokens.json` + `README.md`
 - Bench: `bench/filter/<program>.ts`
 - Registry line: one `.set("<program>", <program>Filter)` in `registry.ts`
 

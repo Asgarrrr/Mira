@@ -84,7 +84,7 @@ Measured by `bench/filter/tsc.ts`. See [`00-decisions.md`](./00-decisions.md) §
 
 | Metric | Threshold | Source |
 |---|---|---|
-| Median compression ratio `tokens(filtered) / tokens(raw)` | ≤ 0.30 | committed `tests/fixtures/tsc/tokens.json` (Anthropic's `messages.count_tokens`) |
+| Median compression ratio `tokens(filtered) / tokens(raw)` | ≤ 0.30 | committed `src/filter/filters/tsc/__fixtures__/tokens.json` (Anthropic's `messages.count_tokens`) |
 | Absolute tokens saved on B1 fixture (`medium.txt`) | ≥ 800 | bench |
 | Triple coverage (forward) | 100% of parsed `(file, line, ruleId)` triples in markdown | bench |
 | Body coverage | every non-cluster body reachable in markdown; cluster exemplar verbatim | bench |

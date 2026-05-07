@@ -24,7 +24,7 @@ Module layout is split by concern from day 1 (00-decisions.md § 11). Even at ~2
 - `tests/filter-tsc-parser.test.ts` — created.
 - `tests/filter-tsc-cluster.test.ts` — created.
 - `tests/filter-tsc-render.test.ts` — created (snapshot tests against the three fixtures).
-- `tests/fixtures/tsc/snapshots/` — created at first test run (Bun's snapshot dir convention; track in git).
+- `src/filter/filters/tsc/__fixtures__/snapshots/` — created at first test run (Bun's snapshot dir convention; track in git).
 
 ## Interface / API change
 
@@ -196,7 +196,7 @@ Coverage:
    - Parse → `TscDiagnostic[]`.
    - Render → markdown.
    - Snapshot the rendered markdown via Bun's snapshot facility.
-   - Assert `diags.length` equals the expected count documented in `tests/fixtures/tsc/README.md`.
+   - Assert `diags.length` equals the expected count documented in `src/filter/filters/tsc/__fixtures__/README.md`.
 
 2. **Information preservation invariant.** Three sub-checks per fixture:
    - (a) **Triple coverage.** For each parsed diagnostic, assert the rendered markdown contains the substring `${file}:${line}:${col}` AND the substring `**${ruleId}**` somewhere in the output.
@@ -219,7 +219,7 @@ bun test tests/filter-tsc.test.ts
 ## Exit criterion
 
 - All assertions in 1-5 above pass.
-- Snapshots committed under `tests/fixtures/tsc/snapshots/` (or wherever Bun stores them — verify in the test output and add to git).
+- Snapshots committed under `src/filter/filters/tsc/__fixtures__/snapshots/` (or wherever Bun stores them — verify in the test output and add to git).
 - `bun tsc --noEmit` green.
 - No new dependencies in `package.json`.
 
