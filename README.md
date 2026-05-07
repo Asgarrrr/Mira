@@ -44,7 +44,7 @@ The substrate accumulates. A project that has lived with Mira for six months car
 
 Each surface anchors to the same model. None of them is the product — the model is.
 
-- **CLI** — `mira run`, `mira context`. Direct human use, scripts, shell hooks.
+- **CLI** — `mira run`, `mira context`, `mira hooks install`. Direct human use, scripts, automatic agent capture.
 - **MCP server** — local stdio. Any MCP-compatible client (Claude Code, Cursor, Goose, Codex, …) consumes Mira through typed tools.
 - **API** — HTTP for runtime integrations and multi-project setups.
 - **IDE bindings** — VS Code, JetBrains. Inline context, no agent needed.
@@ -72,7 +72,13 @@ Assemble context for a task:
 mira context "fix flaky test in auth"
 ```
 
-Connect an MCP-compatible agent:
+Plug Mira into Claude Code — every Bash command the agent runs is captured as an observation, automatically:
+
+```bash
+mira hooks install --agent claude
+```
+
+The installer is idempotent, project-scoped (`--scope project`) or user-scoped (default), and coexists with any other PreToolUse hooks already configured. Run `mira hooks status` to see what's active. Other MCP-compatible clients consume Mira through the stdio server:
 
 ```bash
 mira mcp
