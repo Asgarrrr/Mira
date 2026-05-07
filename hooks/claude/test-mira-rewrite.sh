@@ -86,17 +86,17 @@ echo
 assert_hook "happy/git-status" \
   '{"tool_input":{"command":"git status"}}' \
   REWRITTEN \
-  "run 'git status'"
+  "run --quiet 'git status'"
 
 assert_hook "happy/chained-and" \
   '{"tool_input":{"command":"git add . && git commit -m bar"}}' \
   REWRITTEN \
-  "run 'git add . && git commit -m bar'"
+  "run --quiet 'git add . && git commit -m bar'"
 
 assert_hook "happy/single-quoted-arg" \
   "{\"tool_input\":{\"command\":\"echo 'hello world'\"}}" \
   REWRITTEN \
-  "run 'echo '\\''hello world'\\'''"
+  "run --quiet 'echo '\\''hello world'\\'''"
 
 # Skips
 assert_hook "skip/vim" \

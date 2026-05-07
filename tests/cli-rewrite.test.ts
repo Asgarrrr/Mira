@@ -109,6 +109,13 @@ describe("shouldSkip — idempotence (already wrapped)", () => {
 		expect(shouldSkip("bun /path/src/cli/index.ts run 'foo'").skip).toBe(true);
 	});
 
+	test("already-wrapped with --quiet flag is still detected", () => {
+		expect(shouldSkip("mira run --quiet 'foo'").skip).toBe(true);
+		expect(
+			shouldSkip("bun /path/src/cli/index.ts run --quiet 'foo'").skip,
+		).toBe(true);
+	});
+
 	test("empty command is skipped", () => {
 		expect(shouldSkip("").skip).toBe(true);
 		expect(shouldSkip("   ").skip).toBe(true);
@@ -162,14 +169,16 @@ describe("escapeForShell", () => {
 });
 
 describe("buildRewrittenCommand", () => {
-	test("composes mira-cmd + run + escaped command", () => {
+	test("composes mira-cmd + run --quiet + escaped command", () => {
 		const r = buildRewrittenCommand("git status", "/bin/mira");
-		expect(r).toBe("/bin/mira run 'git status'");
+		expect(r).toBe("/bin/mira run --quiet 'git status'");
 	});
 
 	test("default mira-cmd is bun + cli/index.ts", () => {
 		const r = buildRewrittenCommand("git status");
-		expect(r).toMatch(/^bun\s+\/.+src\/cli\/index\.ts run 'git status'$/);
+		expect(r).toMatch(
+			/^bun\s+\/.+src\/cli\/index\.ts run --quiet 'git status'$/,
+		);
 	});
 
 	test("MIRA_CMD env override is honored", () => {
@@ -177,11 +186,16 @@ describe("buildRewrittenCommand", () => {
 		try {
 			process.env.MIRA_CMD = "/custom/bin/mira";
 			const r = buildRewrittenCommand("git status");
-			expect(r).toBe("/custom/bin/mira run 'git status'");
+			expect(r).toBe("/custom/bin/mira run --quiet 'git status'");
 		} finally {
 			if (prior === undefined) delete process.env.MIRA_CMD;
 			else process.env.MIRA_CMD = prior;
 		}
+	});
+
+	test("includes --quiet so the agent's tool result stays clean (no [mira] footer)", () => {
+		const r = buildRewrittenCommand("any cmd", "mira");
+		expect(r).toContain(" --quiet ");
 	});
 });
 
