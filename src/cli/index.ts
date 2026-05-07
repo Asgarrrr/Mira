@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import { runStdioServer } from "../mcp/server.ts";
 import { runContext } from "./context.ts";
+import { runHooks } from "./hooks.ts";
 import { runCommand } from "./run.ts";
 
 const USAGE = `usage: mira <command> [args...]
@@ -9,6 +10,7 @@ Commands:
   run "<command>"     execute a command, capture evidence, write an observation
   context "<task>"    bundle the last 10 observations into a ContextPack
   mcp                 run the MCP server on stdio
+  hooks <subcommand>  install/uninstall/status the PreToolUse hook for a client
 `;
 
 async function main(): Promise<void> {
@@ -42,6 +44,11 @@ async function main(): Promise<void> {
 			// exits naturally with the right status.
 			await runStdioServer();
 			return;
+		}
+		case "hooks": {
+			const code = await runHooks(rest);
+			process.exit(code);
+			break;
 		}
 		default:
 			process.stderr.write(`mira: unknown command "${subcommand}"\n${USAGE}`);
