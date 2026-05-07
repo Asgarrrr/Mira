@@ -22,23 +22,21 @@ commands → evidence → observations → context → action
 - **evidence** — raw bytes preserved under `.mira/`, never overwritten.
 - **observations** — typed, structured summaries (`CommandObservation`) referencing evidence by id.
 - **context** — a `ContextPack` assembled on demand from recent observations and the project's structural understanding.
-- **action** — any agent consumes the pack through the CLI, the MCP server, the API, or the IDE.
+- **action** — any agent consumes the pack through the CLI or the MCP server.
 
 Compact enough for an agent's window. Traceable enough to drill into raw bytes when it needs to.
 
 ## What Mira does
 
-Three kernels feed the agent, all inside the unified evidence model.
+Two capabilities feed the agent today, both anchored on the unified evidence model.
 
-**Live map** — a typed, queryable cartography of the codebase: modules, exports, types, signatures, locations. The agent reads it before exploring, instead of burning tokens grepping for definitions and call sites.
+**Distillation** — command-specific filters turn raw output into typed `Finding[]` at capture time. V0.4 ships `tsc`; `git`, `eslint`, and `bun test` follow. Raw bytes are never discarded; the agent always has a one-hop drill-in.
 
-**Distillation** — command-specific summarizers (`bun test`, `tsc`, `git diff`, `eslint`, …) turn raw output into typed `Finding[]` at capture time. Raw bytes are never discarded; the agent always has a one-hop drill-in.
+**Structural sensing** — task-aware filesystem signals tied to specific paths: changed files (vs HEAD), related siblings (same directory, same stem), test counterparts, and import-hint references. Surfaced as `ArchitectureSignal[]` inside `ContextPack.suspectedFiles`, never as opaque global grades.
 
-**Structural sensing** — coupling, cohesion, co-changes, hotspots — emitted as `ArchitectureSignal[]` tied to specific paths, never as opaque global grades.
+They compose through the evidence model. A `tsc` failure becomes *"2 errors in `src/auth.ts` — its sibling `auth.helpers.ts` was changed in this working tree, and `tests/auth.test.ts` imports it."* Mira hands the agent the inputs; the narrative is the agent's own job.
 
-They compose. *"3 test failures"* becomes *"3 failures in core/middleware — imported by 14 call sites, recently refactored, here are the verification commands to run next."* No single kernel produces that payload alone.
-
-The substrate accumulates. A project that has lived with Mira for six months carries a body of evidence a fresh agent cannot match — and every new agent that connects inherits it.
+The substrate accumulates. A project that has lived with Mira for a few months carries a body of evidence a fresh agent cannot match — and every new agent that connects inherits it.
 
 ## Surfaces
 
@@ -59,9 +57,13 @@ The first run creates `.mira/`. Each run gets a stable id, a raw evidence direct
 
 ```
 .mira/runs/<run-id>/
+├── metadata.json
 ├── stdout.log
 ├── stderr.log
-└── observation.json
+├── combined.log
+├── observation.json
+├── observation.md
+└── filtered.md          # only when a registered filter (e.g. tsc) hits
 ```
 
 Assemble context for a task:
@@ -84,7 +86,7 @@ mira mcp
 
 ## Principles
 
-- **One primitive, many surfaces.** The evidence model is the spine. CLI, MCP, API, IDE — all expose the same types.
+- **One primitive, two surfaces.** The evidence model is the spine. CLI and MCP expose the same types.
 - **Local-first, deterministic.** No network in the kernel. No LLM in the kernel. Same input, same observation.
 - **Compact signal over raw output.** Mira refuses to dump terminal bytes into an agent's window.
 - **Traceable.** Every conclusion in an observation links to bytes on disk.
