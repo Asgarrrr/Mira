@@ -15,15 +15,25 @@ export function renderTscMarkdown(
 	if (clusters.length === 0) {
 		return `# tsc — pass (${opts.durationMs}ms)\n`;
 	}
-	let totalDiags = 0;
+	let errors = 0;
+	let warnings = 0;
+	let infos = 0;
 	const fileSet = new Set<string>();
 	for (const c of clusters) {
-		totalDiags += c.members.length;
-		for (const m of c.members) fileSet.add(m.file);
+		for (const m of c.members) {
+			fileSet.add(m.file);
+			if (m.severity === "error") errors++;
+			else if (m.severity === "warning") warnings++;
+			else infos++;
+		}
 	}
-	const errorWord = totalDiags === 1 ? "error" : "errors";
 	const fileWord = fileSet.size === 1 ? "file" : "files";
-	const header = `# tsc — ${totalDiags} ${errorWord} in ${fileSet.size} ${fileWord} (${opts.durationMs}ms)`;
+	const counts: string[] = [];
+	if (errors > 0) counts.push(`${errors} ${errors === 1 ? "error" : "errors"}`);
+	if (warnings > 0)
+		counts.push(`${warnings} ${warnings === 1 ? "warning" : "warnings"}`);
+	if (infos > 0) counts.push(`${infos} info`);
+	const header = `# tsc — ${counts.join(", ")} in ${fileSet.size} ${fileWord} (${opts.durationMs}ms)`;
 	const topLine = formatTopCodes(clusters);
 	const headerBlock = topLine === null ? header : `${header}\n${topLine}`;
 	const bullets = clusters.map(renderCluster);

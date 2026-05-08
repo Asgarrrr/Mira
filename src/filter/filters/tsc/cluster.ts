@@ -37,9 +37,17 @@ export function clusterDiagnostics(diags: TscDiagnostic[]): TscCluster[] {
 	}
 	clusters.sort(
 		(a, b) =>
+			severityRank(a.members[0].severity) -
+				severityRank(b.members[0].severity) ||
 			b.members.length - a.members.length ||
 			a.ruleId.localeCompare(b.ruleId) ||
 			a.members[0].file.localeCompare(b.members[0].file),
 	);
 	return clusters;
+}
+
+// Lower rank surfaces first. Tsc emits a single severity per ruleId, so
+// reading members[0].severity for the cluster's severity is sound.
+function severityRank(s: TscDiagnostic["severity"]): number {
+	return s === "error" ? 0 : s === "warning" ? 1 : 2;
 }
