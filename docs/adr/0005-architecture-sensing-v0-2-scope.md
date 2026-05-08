@@ -24,8 +24,8 @@ The four heuristics V0.2 ships:
 
 1. **`changed-file`** — paths reported by git as modified or untracked in the working tree relative to `HEAD`. Deleted paths are excluded; an invariant requires every signal to reference a path that exists on disk.
 2. **`related-file`** — for each `changed-file`, files in the **same directory** whose basename shares a stem (e.g., `foo.ts` ↔ `foo.types.ts` ↔ `foo.helpers.ts`).
-3. **`test-file`** — for each `changed-file`, the conventional test counterpart matching `*.test.ts`, `*.test.tsx`, `*.spec.ts`, `*.spec.tsx`, in the same directory or under a sibling `tests/` directory.
-4. **`import-hint`** — for each `changed-file`, files containing a textual `from "…<basename>"` or `from "…<basename-no-ext>"` reference. This is a grep against on-disk source files. It is not a parser.
+3. **`test-file`** — for each `changed-file`, the conventional test counterpart matching `*.test.ts`, `*.test.tsx`, `*.spec.ts`, `*.spec.tsx`, in (a) the same directory, (b) a co-located `tests/` or `__tests__/` directory, or (c) the repo-root `tests/` or `__tests__/` directory.
+4. **`import-hint`** — for each `changed-file`, files containing a textual `from "<spec>"` reference where `<spec>` is a relative path (starts with `.` or `/`) that **resolves to the changed file's path** under POSIX path math, with `.ts`, `.tsx`, and `/index.ts(x)` suffix recovery. Bare specifiers (`from "react"`) and tsconfig-paths aliases (`from "@/x"`) are excluded; the rule prefers false negatives over false positives. This is a grep against on-disk source files combined with deterministic path resolution. It is not a parser.
 
 These heuristics rely on filesystem inspection and the project's `git` executable. No AST, no TypeScript Compiler API, no semantic analysis.
 
@@ -93,3 +93,7 @@ The `ContextPack` schema is unchanged in V0.2: `suspectedFiles: string[]`. Only 
 - ADR 0001 invariant *"context packs must not invent facts"* remains mechanically enforced: `suspectedFiles` paths come from `git` and `readdir`, and existence is verified before emitting a signal.
 - The rule prefers false negatives (a genuine related file might be missed) over false positives (a fabricated path). This is consistent with Mira's *not magic* non-goal.
 - If a future phase needs a richer graph (transitive imports, ownership, package boundaries), it extends the kernel rather than reinterpreting V0.2 signals — the V0.2 type is intentionally narrow.
+
+## Amendments
+
+- **V0.2.1**: tightened bullets 3 and 4 of the heuristic list. `test-file` now also covers co-located `__tests__/` and the repo-root `tests/` / `__tests__/` directories (the dominant convention in this repo and in Bun-style projects). `import-hint` switched from basename-only matching to deterministic relative-path resolution, eliminating cross-directory basename collisions and bare-specifier false matches; the comparison stays filesystem-only (path math, no AST).

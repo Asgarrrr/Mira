@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, posix } from "node:path";
 
 import type { ArchitectureSignal } from "./architecture-signal.ts";
 
@@ -107,25 +107,36 @@ function testFileSignals(cwd: string, rel: string): ArchitectureSignal[] {
 	const stem = stemOf(basename(rel));
 	if (!stem) return [];
 
-	const candidates: string[] = [];
-	for (const suffix of TEST_SUFFIXES) {
-		const inSameDir = `${stem}${suffix}`;
-		candidates.push(dir === "." ? inSameDir : `${dir}/${inSameDir}`);
-		const inSiblingTests = `tests/${stem}${suffix}`;
-		candidates.push(dir === "." ? inSiblingTests : `${dir}/${inSiblingTests}`);
-	}
+	const dirPrefix = dir === "." ? "" : `${dir}/`;
+	// Five conventional locations for a test counterpart:
+	// same-dir, co-located tests/, co-located __tests__/, repo-root tests/,
+	// repo-root __tests__/. When dir === "." the co-located and repo-root
+	// variants collapse — Set dedupes.
+	const prefixes = new Set<string>([
+		dirPrefix,
+		`${dirPrefix}tests/`,
+		`${dirPrefix}__tests__/`,
+		"tests/",
+		"__tests__/",
+	]);
 
 	const out: ArchitectureSignal[] = [];
-	for (const candidate of candidates) {
-		if (candidate === rel) continue;
-		if (!existsSync(join(cwd, candidate))) continue;
-		out.push({
-			kind: "test-file",
-			path: candidate,
-			reason: `test counterpart of ${rel}`,
-			source: "filesystem",
-			relatedTo: rel,
-		});
+	const emitted = new Set<string>();
+	for (const prefix of prefixes) {
+		for (const suffix of TEST_SUFFIXES) {
+			const candidate = `${prefix}${stem}${suffix}`;
+			if (candidate === rel) continue;
+			if (emitted.has(candidate)) continue;
+			if (!existsSync(join(cwd, candidate))) continue;
+			emitted.add(candidate);
+			out.push({
+				kind: "test-file",
+				path: candidate,
+				reason: `test counterpart of ${rel}`,
+				source: "filesystem",
+				relatedTo: rel,
+			});
+		}
 	}
 	return out;
 }
@@ -136,9 +147,7 @@ function importHintSignals(
 	sourceFiles: readonly string[],
 	changedSet: ReadonlySet<string>,
 ): ArchitectureSignal[] {
-	const fileName = basename(rel);
-	if (!isSourceFile(fileName)) return [];
-	const noExt = stripTsExtension(fileName);
+	if (!isSourceFile(basename(rel))) return [];
 
 	const out: ArchitectureSignal[] = [];
 	const seen = new Set<string>();
@@ -152,12 +161,12 @@ function importHintSignals(
 		} catch {
 			continue;
 		}
-		if (!hasImportTo(content, fileName, noExt)) continue;
+		if (!importMatchesChanged(content, sourceRel, rel)) continue;
 		seen.add(sourceRel);
 		out.push({
 			kind: "import-hint",
 			path: sourceRel,
-			reason: `imports a path ending with "${noExt}"`,
+			reason: `imports a path resolving to ${rel}`,
 			source: "filesystem",
 			relatedTo: rel,
 		});
@@ -216,21 +225,14 @@ function stemOf(name: string): string {
 	return dot === -1 ? name : name.slice(0, dot);
 }
 
-function stripTsExtension(name: string): string {
-	for (const ext of TS_EXTENSIONS) {
-		if (name.endsWith(ext)) return name.slice(0, -ext.length);
-	}
-	return name;
-}
-
 function isSourceFile(name: string): boolean {
 	return TS_EXTENSIONS.some((ext) => name.endsWith(ext));
 }
 
-function hasImportTo(
+function importMatchesChanged(
 	content: string,
-	fullBasename: string,
-	noExtBasename: string,
+	importerRel: string,
+	changedRel: string,
 ): boolean {
 	const re = /from\s+["']([^"']+)["']/g;
 	let m: RegExpExecArray | null;
@@ -238,8 +240,24 @@ function hasImportTo(
 	while ((m = re.exec(content)) !== null) {
 		const spec = m[1];
 		if (!spec) continue;
-		const tail = basename(spec);
-		if (tail === fullBasename || tail === noExtBasename) return true;
+		// Skip bare specifiers (`from "react"`) and tsconfig-paths aliases
+		// (`from "@/x"`). ADR 0005: prefer false negatives over false positives.
+		if (!spec.startsWith(".") && !spec.startsWith("/")) continue;
+		const importerDir = posix.dirname(importerRel);
+		const resolved = posix.normalize(posix.join(importerDir, spec));
+		// `..`-prefixed resolutions escape the repo root and can't reference
+		// a project-relative changed file.
+		if (resolved.startsWith("..")) continue;
+		if (resolvedMatchesChanged(resolved, changedRel)) return true;
+	}
+	return false;
+}
+
+function resolvedMatchesChanged(resolved: string, changedRel: string): boolean {
+	if (resolved === changedRel) return true;
+	for (const ext of TS_EXTENSIONS) {
+		if (`${resolved}${ext}` === changedRel) return true;
+		if (`${resolved}/index${ext}` === changedRel) return true;
 	}
 	return false;
 }

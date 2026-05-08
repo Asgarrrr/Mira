@@ -246,6 +246,43 @@ describe("senseArchitecture / test-file", () => {
 		const signals = await senseArchitecture(cwd);
 		expect(pathsByKind(signals, "test-file")).toEqual([]);
 	});
+
+	test("matches counterpart at repo-root tests/", async () => {
+		gitInit(cwd);
+		writeFile(cwd, "src/foo.ts", "x\n");
+		writeFile(cwd, "tests/foo.test.ts", "x\n");
+		gitCommitAll(cwd, "init");
+		writeFile(cwd, "src/foo.ts", "y\n");
+
+		const signals = await senseArchitecture(cwd);
+		expect(pathsByKind(signals, "test-file")).toContain("tests/foo.test.ts");
+	});
+
+	test("matches counterpart in co-located __tests__/", async () => {
+		gitInit(cwd);
+		writeFile(cwd, "src/foo.ts", "x\n");
+		writeFile(cwd, "src/__tests__/foo.test.ts", "x\n");
+		gitCommitAll(cwd, "init");
+		writeFile(cwd, "src/foo.ts", "y\n");
+
+		const signals = await senseArchitecture(cwd);
+		expect(pathsByKind(signals, "test-file")).toContain(
+			"src/__tests__/foo.test.ts",
+		);
+	});
+
+	test("matches counterpart at repo-root __tests__/", async () => {
+		gitInit(cwd);
+		writeFile(cwd, "src/foo.ts", "x\n");
+		writeFile(cwd, "__tests__/foo.test.ts", "x\n");
+		gitCommitAll(cwd, "init");
+		writeFile(cwd, "src/foo.ts", "y\n");
+
+		const signals = await senseArchitecture(cwd);
+		expect(pathsByKind(signals, "test-file")).toContain(
+			"__tests__/foo.test.ts",
+		);
+	});
 });
 
 describe("senseArchitecture / import-hint", () => {
@@ -299,6 +336,54 @@ describe("senseArchitecture / import-hint", () => {
 
 		const signals = await senseArchitecture(cwd);
 		expect(pathsByKind(signals, "import-hint")).toEqual(["src/a.ts"]);
+	});
+
+	test("does not match basename collision across directories", async () => {
+		gitInit(cwd);
+		writeFile(cwd, "src/utils/foo.ts", "export const x = 1;\n");
+		writeFile(cwd, "src/auth/foo.ts", "export const y = 1;\n");
+		// imports its OWN local foo, not the utils one — basename matches but path doesn't.
+		writeFile(cwd, "src/auth/a.ts", 'import { y } from "./foo";\n');
+		gitCommitAll(cwd, "init");
+		writeFile(cwd, "src/utils/foo.ts", "export const x = 2;\n");
+
+		const signals = await senseArchitecture(cwd);
+		expect(pathsByKind(signals, "import-hint")).toEqual([]);
+	});
+
+	test("does not match bare specifier with same basename", async () => {
+		gitInit(cwd);
+		writeFile(cwd, "src/react.ts", "export const x = 1;\n");
+		writeFile(cwd, "src/a.ts", 'import { x } from "react";\n');
+		gitCommitAll(cwd, "init");
+		writeFile(cwd, "src/react.ts", "export const x = 2;\n");
+
+		const signals = await senseArchitecture(cwd);
+		expect(pathsByKind(signals, "import-hint")).toEqual([]);
+	});
+
+	test("matches directory imports resolving to index.ts", async () => {
+		gitInit(cwd);
+		writeFile(cwd, "src/utils/index.ts", "export const x = 1;\n");
+		writeFile(cwd, "src/a.ts", 'import { x } from "./utils";\n');
+		gitCommitAll(cwd, "init");
+		writeFile(cwd, "src/utils/index.ts", "export const x = 2;\n");
+
+		const signals = await senseArchitecture(cwd);
+		expect(pathsByKind(signals, "import-hint")).toEqual(["src/a.ts"]);
+	});
+
+	test("does not match tsconfig-paths aliases", async () => {
+		gitInit(cwd);
+		writeFile(cwd, "src/foo.ts", "export const x = 1;\n");
+		writeFile(cwd, "src/a.ts", 'import { x } from "@/foo";\n');
+		gitCommitAll(cwd, "init");
+		writeFile(cwd, "src/foo.ts", "export const x = 2;\n");
+
+		const signals = await senseArchitecture(cwd);
+		// Documents the deliberate false-negative: ADR 0005 prefers no signal
+		// over a fabricated one when path resolution is ambiguous.
+		expect(pathsByKind(signals, "import-hint")).toEqual([]);
 	});
 });
 
