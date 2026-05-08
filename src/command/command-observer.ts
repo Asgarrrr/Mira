@@ -38,13 +38,17 @@ export class CommandObserver {
 		let combinedBuf = "";
 		let killedByTimeout = false;
 
-		proc.stdout?.on("data", (chunk: Buffer) => {
-			const text = chunk.toString("utf8");
+		// `setEncoding("utf8")` routes chunks through Node's StringDecoder so a
+		// multibyte codepoint split across two `data` events is reassembled
+		// instead of decoded as two replacement-character fragments.
+		proc.stdout?.setEncoding("utf8");
+		proc.stderr?.setEncoding("utf8");
+
+		proc.stdout?.on("data", (text: string) => {
 			stdoutBuf += text;
 			combinedBuf += text;
 		});
-		proc.stderr?.on("data", (chunk: Buffer) => {
-			const text = chunk.toString("utf8");
+		proc.stderr?.on("data", (text: string) => {
 			stderrBuf += text;
 			combinedBuf += text;
 		});
@@ -81,8 +85,11 @@ export class CommandObserver {
 			proc.stderr?.destroy();
 		}, this.timeoutMs);
 
-		const { code, signal } = await closed;
-		clearTimeout(timer);
+		// `Promise.finally` ensures the timer is cleared even if `closed`
+		// rejects (bad cwd, EMFILE, fork failure). Otherwise the default 300s
+		// timer keeps the event loop alive after observe() rejects, and may
+		// later try to kill a stale pid.
+		const { code, signal } = await closed.finally(() => clearTimeout(timer));
 
 		const durationMs = Date.now() - start;
 		const exitCode = code;
