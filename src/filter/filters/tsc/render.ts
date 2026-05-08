@@ -14,9 +14,12 @@ export function renderTscMarkdown(
 	if (clusters.length === 0) {
 		return `# tsc — pass (${opts.durationMs}ms)\n`;
 	}
-	const totalDiags = clusters.reduce((sum, c) => sum + c.members.length, 0);
+	let totalDiags = 0;
 	const fileSet = new Set<string>();
-	for (const c of clusters) for (const m of c.members) fileSet.add(m.file);
+	for (const c of clusters) {
+		totalDiags += c.members.length;
+		for (const m of c.members) fileSet.add(m.file);
+	}
 	const errorWord = totalDiags === 1 ? "error" : "errors";
 	const fileWord = fileSet.size === 1 ? "file" : "files";
 	const header = `# tsc — ${totalDiags} ${errorWord} in ${fileSet.size} ${fileWord} (${opts.durationMs}ms)`;
