@@ -30,6 +30,38 @@ describe("renderTscMarkdown — header shape", () => {
 		expect(md.split("\n")[0]).toBe("# tsc — 1 error in 1 file (0ms)");
 	});
 
+	test("splits header by severity when both errors and warnings exist", () => {
+		const text = [
+			"src/a.ts(1,1): error TS1: e",
+			"src/b.ts(2,2): warning TS6133: w 'a'",
+			"src/b.ts(3,3): warning TS6133: w 'b'",
+		].join("\n");
+		const md = renderFixture(text);
+		expect(md.split("\n")[0]).toBe(
+			"# tsc — 1 error, 2 warnings in 2 files (1000ms)",
+		);
+	});
+
+	test("singularizes per-severity counts when each severity has one diag", () => {
+		const text = [
+			"src/a.ts(1,1): error TS1: e",
+			"src/b.ts(2,2): warning TS6133: w",
+		].join("\n");
+		const md = renderFixture(text);
+		expect(md.split("\n")[0]).toBe(
+			"# tsc — 1 error, 1 warning in 2 files (1000ms)",
+		);
+	});
+
+	test("keeps the bare 'errors' header when no warnings or infos are present", () => {
+		const text = [
+			"src/a.ts(1,1): error TS1: e1",
+			"src/a.ts(2,2): error TS1: e2",
+		].join("\n");
+		const md = renderFixture(text);
+		expect(md.split("\n")[0]).toBe("# tsc — 2 errors in 1 file (1000ms)");
+	});
+
 	test("ends with exactly one trailing newline", () => {
 		const text = "src/foo.ts(1,1): error TS1: x\n";
 		const md = renderFixture(text);

@@ -121,4 +121,28 @@ describe("clusterDiagnostics", () => {
 	test("returns [] for empty input", () => {
 		expect(clusterDiagnostics([])).toEqual([]);
 	});
+
+	test("ranks errors before warnings even when warning cluster is larger", () => {
+		const diags = [
+			diag({ ruleId: "TS1", severity: "error", message: "err 'x'" }),
+			diag({ ruleId: "TS6133", severity: "warning", message: "w 'a'" }),
+			diag({ ruleId: "TS6133", severity: "warning", message: "w 'b'" }),
+			diag({ ruleId: "TS6133", severity: "warning", message: "w 'c'" }),
+		];
+		const clusters = clusterDiagnostics(diags);
+		expect(clusters[0]?.ruleId).toBe("TS1");
+		expect(clusters[0]?.members[0]?.severity).toBe("error");
+		expect(clusters[1]?.ruleId).toBe("TS6133");
+	});
+
+	test("ranks warnings before info regardless of cluster size", () => {
+		const diags = [
+			diag({ ruleId: "TS9999", severity: "info", message: "i 'a'" }),
+			diag({ ruleId: "TS9999", severity: "info", message: "i 'b'" }),
+			diag({ ruleId: "TS6133", severity: "warning", message: "w 'x'" }),
+		];
+		const clusters = clusterDiagnostics(diags);
+		expect(clusters[0]?.members[0]?.severity).toBe("warning");
+		expect(clusters[1]?.members[0]?.severity).toBe("info");
+	});
 });

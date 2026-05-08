@@ -5,7 +5,7 @@ import { parseTscOutput, type TscDiagnostic } from "./parser.ts";
 import { renderTscMarkdown } from "./render.ts";
 
 // Bump when the rendered markdown shape changes.
-export const TSC_FILTER_VERSION = "tsc/2";
+export const TSC_FILTER_VERSION = "tsc/3";
 
 export const tscFilter: Filter = (input, ctx): FilteredView => {
 	const text = mergeStreams(input.stdout, input.stderr);
