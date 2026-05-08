@@ -65,6 +65,8 @@ export function extractTokens(command: string): string[] {
 
 // Longest-prefix match against the registry. Tries the N-token key first,
 // falls back through (N-1)…1. Returns `undefined` when no key matches.
+// Caller controls the cap by sizing `tokens` (`extractTokens` slices to
+// `MAX_KEY_TOKENS`); this function just walks what it's given.
 //
 // Example: for tokens = ["git", "diff"] and a registry holding "git diff" and
 // "git", "git diff" wins. For tokens = ["tsc", "--noEmit"] and a registry
@@ -73,7 +75,7 @@ export function findRegistryEntry(
 	tokens: string[],
 	registry: Map<string, RegistryEntry>,
 ): RegistryEntry | undefined {
-	for (let n = Math.min(tokens.length, MAX_KEY_TOKENS); n >= 1; n--) {
+	for (let n = tokens.length; n >= 1; n--) {
 		const key = tokens.slice(0, n).join(" ");
 		const entry = registry.get(key);
 		if (entry !== undefined) return entry;

@@ -30,8 +30,10 @@ type DiagnosticGroups = {
 };
 const CONTINUATION_RE = /^\s{2,}\S/;
 const SUMMARY_RE = /^Found \d+ errors? in \d+ files?\.?\s*$/;
-const SUGGESTION_EXTRACT_RE = /Did you mean ['"]([^'"]+)['"]\s*\?\s*$/;
-const SUGGESTION_STRIP_RE = /\s*\.?\s*Did you mean ['"][^'"]+['"]\s*\?\s*$/;
+// Matches the trailing "Did you mean '<x>'?" hint with its leading
+// separator (optional whitespace + dot). Group 1 is the suggestion;
+// `m.index` is where the hint begins, used to slice it off the message.
+const SUGGESTION_RE = /\s*\.?\s*Did you mean ['"]([^'"]+)['"]\s*\?\s*$/;
 
 function severityFrom(token: string): "error" | "warning" | "info" {
 	if (token === "error") return "error";
@@ -40,10 +42,10 @@ function severityFrom(token: string): "error" | "warning" | "info" {
 }
 
 function extractSuggestion(diag: TscDiagnostic): void {
-	const m = SUGGESTION_EXTRACT_RE.exec(diag.message);
+	const m = SUGGESTION_RE.exec(diag.message);
 	if (m === null || m[1] === undefined) return;
 	diag.suggestion = m[1];
-	diag.message = diag.message.replace(SUGGESTION_STRIP_RE, "");
+	diag.message = diag.message.slice(0, m.index);
 }
 
 export function parseTscOutputWithStats(text: string): {
