@@ -100,6 +100,20 @@ describe("parseTscOutput — line-ending handling", () => {
 		expect(d?.message).toBe("msg");
 		expect(d?.rawText.endsWith("\r")).toBe(false);
 	});
+
+	test("does not quarantine whitespace-only lines", () => {
+		const text = ["a.ts(1,1): error TS1: msg", "   ", "\t"].join("\n");
+		const { unparsedLines } = parseTscOutputWithStats(text);
+		expect(unparsedLines).toEqual([]);
+	});
+
+	test("normalizes lone \\r so it does not appear in unparsed text", () => {
+		const text = "noise without LF\rmore noise\r";
+		const { unparsedLines } = parseTscOutputWithStats(text);
+		for (const u of unparsedLines) {
+			expect(u.text.includes("\r")).toBe(false);
+		}
+	});
 });
 
 describe("parseTscOutput — ANSI handling", () => {

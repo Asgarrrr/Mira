@@ -341,6 +341,11 @@ describe("formatLineRanges", () => {
 	test("sorts unsorted input defensively", () => {
 		expect(formatLineRanges([80, 42, 79, 51, 78, 50])).toBe("42, 50-51, 78-80");
 	});
+
+	test("deduplicates input", () => {
+		expect(formatLineRanges([5, 5, 6])).toBe("5-6");
+		expect(formatLineRanges([5, 5])).toBe("5");
+	});
 });
 
 describe("renderTscMarkdown — snapshots", () => {

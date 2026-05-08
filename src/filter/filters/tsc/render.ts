@@ -52,7 +52,9 @@ function formatUnparsedFooter(unparsed: number[]): string | null {
 
 export function formatLineRanges(lines: number[]): string {
 	if (lines.length === 0) return "";
-	const sorted = [...lines].sort((a, b) => a - b);
+	// Dedupe defensively: callers pass unique inputs today, but this function
+	// is exported and tested in isolation — `[5, 5]` should yield "5", not "5, 5".
+	const sorted = [...new Set(lines)].sort((a, b) => a - b);
 	const parts: string[] = [];
 	let start = sorted[0] as number;
 	let prev = start;

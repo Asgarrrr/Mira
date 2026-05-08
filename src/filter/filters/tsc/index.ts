@@ -14,6 +14,12 @@ export const TSC_FILTER_VERSION = "tsc/4";
 export const tscFilter: Filter = (input, ctx): FilteredView => {
 	const text = mergeStreams(input.stdout, input.stderr);
 	const { diags, unparsedLines } = parseTscOutputWithStats(text);
+	// Pretty-mode passthrough: zero real diagnostics, only unparsed lines, on
+	// a failed run → we're the wrong filter. Returning an empty view lets the
+	// dispatcher fall back to raw output (mirrors its own pretty-mode rule).
+	if (diags.length === 0 && unparsedLines.length > 0 && input.exitCode !== 0) {
+		return { findings: [], markdown: "" };
+	}
 	const path = `.mira/runs/${ctx.runId}/combined.log`;
 	const diagFindings = diags.map((d, i) => buildFinding(d, i, path));
 	const unparsedFindings = unparsedLines.map((u) =>
