@@ -1,36 +1,50 @@
 import { describe, expect, test } from "bun:test";
 
 import { clusterDiagnostics } from "../src/filter/filters/tsc/cluster.ts";
-import { tscFilter } from "../src/filter/filters/tsc/index.ts";
+import {
+	TSC_FILTER_VERSION,
+	tscFilter,
+} from "../src/filter/filters/tsc/index.ts";
 import { parseTscOutput } from "../src/filter/filters/tsc/parser.ts";
 import {
 	formatLineRanges,
+	type RenderOptions,
 	renderTscMarkdown,
 } from "../src/filter/filters/tsc/render.ts";
 
 const FIXTURE_DIR = `${import.meta.dir}/../src/filter/filters/tsc/__fixtures__`;
+const STUB_HASH = "deadbeef";
 
 async function readFixture(name: string): Promise<string> {
 	return Bun.file(`${FIXTURE_DIR}/${name}`).text();
 }
 
+function renderOpts(overrides: Partial<RenderOptions> = {}): RenderOptions {
+	return {
+		durationMs: 1000,
+		filterVersion: TSC_FILTER_VERSION,
+		findingsHash: STUB_HASH,
+		...overrides,
+	};
+}
+
 function renderFixture(text: string): string {
 	const diags = parseTscOutput(text);
 	const clusters = clusterDiagnostics(diags);
-	return renderTscMarkdown(clusters, { durationMs: 1000 });
+	return renderTscMarkdown(clusters, renderOpts());
 }
 
 describe("renderTscMarkdown — header shape", () => {
 	test("emits a pass header with no findings", () => {
-		const md = renderTscMarkdown([], { durationMs: 42 });
-		expect(md).toBe("# tsc — pass (42ms)\n");
+		const md = renderTscMarkdown([], renderOpts({ durationMs: 42 }));
+		expect(md.split("\n")[0]).toBe("# tsc — pass");
 	});
 
 	test("singularizes 'error' and 'file' counts", () => {
 		const text = "src/foo.ts(1,1): error TS1: only one error\n";
 		const clusters = clusterDiagnostics(parseTscOutput(text));
-		const md = renderTscMarkdown(clusters, { durationMs: 0 });
-		expect(md.split("\n")[0]).toBe("# tsc — 1 error in 1 file (0ms)");
+		const md = renderTscMarkdown(clusters, renderOpts({ durationMs: 0 }));
+		expect(md.split("\n")[0]).toBe("# tsc — 1 error in 1 file");
 	});
 
 	test("splits header by severity when both errors and warnings exist", () => {
@@ -40,9 +54,7 @@ describe("renderTscMarkdown — header shape", () => {
 			"src/b.ts(3,3): warning TS6133: w 'b'",
 		].join("\n");
 		const md = renderFixture(text);
-		expect(md.split("\n")[0]).toBe(
-			"# tsc — 1 error, 2 warnings in 2 files (1000ms)",
-		);
+		expect(md.split("\n")[0]).toBe("# tsc — 1 error, 2 warnings in 2 files");
 	});
 
 	test("singularizes per-severity counts when each severity has one diag", () => {
@@ -51,9 +63,7 @@ describe("renderTscMarkdown — header shape", () => {
 			"src/b.ts(2,2): warning TS6133: w",
 		].join("\n");
 		const md = renderFixture(text);
-		expect(md.split("\n")[0]).toBe(
-			"# tsc — 1 error, 1 warning in 2 files (1000ms)",
-		);
+		expect(md.split("\n")[0]).toBe("# tsc — 1 error, 1 warning in 2 files");
 	});
 
 	test("keeps the bare 'errors' header when no warnings or infos are present", () => {
@@ -62,7 +72,7 @@ describe("renderTscMarkdown — header shape", () => {
 			"src/a.ts(2,2): error TS1: e2",
 		].join("\n");
 		const md = renderFixture(text);
-		expect(md.split("\n")[0]).toBe("# tsc — 2 errors in 1 file (1000ms)");
+		expect(md.split("\n")[0]).toBe("# tsc — 2 errors in 1 file");
 	});
 
 	test("ends with exactly one trailing newline", () => {
@@ -345,50 +355,55 @@ describe("renderTscMarkdown — unparsed footer", () => {
 	test("emits the ⚠ footer when unparsedLines is non-empty", () => {
 		const text = "src/foo.ts(1,1): error TS1: x\n";
 		const clusters = clusterDiagnostics(parseTscOutput(text));
-		const md = renderTscMarkdown(clusters, {
-			durationMs: 1000,
-			unparsedLines: [42],
-		});
+		const md = renderTscMarkdown(clusters, renderOpts({ unparsedLines: [42] }));
 		expect(md).toContain("⚠ 1 unparsed line — see combined.log:42");
 	});
 
 	test("pluralizes 'lines' when more than one", () => {
-		const md = renderTscMarkdown([], {
-			durationMs: 5,
-			unparsedLines: [10, 11],
-		});
+		const md = renderTscMarkdown(
+			[],
+			renderOpts({ durationMs: 5, unparsedLines: [10, 11] }),
+		);
 		expect(md).toContain("⚠ 2 unparsed lines — see combined.log:10-11");
 	});
 
 	test("omits the footer when unparsedLines is undefined or empty", () => {
 		const text = "src/foo.ts(1,1): error TS1: x\n";
 		const clusters = clusterDiagnostics(parseTscOutput(text));
-		const a = renderTscMarkdown(clusters, { durationMs: 1000 });
-		const b = renderTscMarkdown(clusters, {
-			durationMs: 1000,
-			unparsedLines: [],
-		});
+		const a = renderTscMarkdown(clusters, renderOpts());
+		const b = renderTscMarkdown(clusters, renderOpts({ unparsedLines: [] }));
 		expect(a).not.toContain("⚠");
 		expect(b).not.toContain("⚠");
 	});
 
 	test("appends footer to the pass header when zero clusters but unparsed lines present", () => {
-		const md = renderTscMarkdown([], {
-			durationMs: 7,
-			unparsedLines: [3, 4, 5],
-		});
+		const md = renderTscMarkdown(
+			[],
+			renderOpts({
+				durationMs: 7,
+				unparsedLines: [3, 4, 5],
+				findingsHash: "12345678",
+			}),
+		);
 		expect(md).toBe(
-			"# tsc — pass (7ms)\n\n⚠ 3 unparsed lines — see combined.log:3-5\n",
+			[
+				"# tsc — pass",
+				"",
+				"⚠ 3 unparsed lines — see combined.log:3-5",
+				"",
+				`<!-- mira: filterVersion=${TSC_FILTER_VERSION} hash=12345678 duration=7ms -->`,
+				"",
+			].join("\n"),
 		);
 	});
 
 	test("separates body bullets from footer with a blank line", () => {
 		const text = "src/foo.ts(1,1): error TS1: x\n";
 		const clusters = clusterDiagnostics(parseTscOutput(text));
-		const md = renderTscMarkdown(clusters, {
-			durationMs: 0,
-			unparsedLines: [99],
-		});
+		const md = renderTscMarkdown(
+			clusters,
+			renderOpts({ durationMs: 0, unparsedLines: [99] }),
+		);
 		const lines = md.split("\n");
 		const footerIdx = lines.findIndex((l) => l.startsWith("⚠"));
 		expect(footerIdx).toBeGreaterThan(0);
@@ -421,6 +436,112 @@ describe("formatLineRanges", () => {
 	test("deduplicates input", () => {
 		expect(formatLineRanges([5, 5, 6])).toBe("5-6");
 		expect(formatLineRanges([5, 5])).toBe("5");
+	});
+});
+
+describe("renderTscMarkdown — cache-stable footer", () => {
+	const FOOTER_RE =
+		/^<!-- mira: filterVersion=tsc\/6 hash=[0-9a-f]{8} duration=\d+ms -->$/;
+
+	test("header no longer carries (Tms)", () => {
+		const text = [
+			"src/a.ts(1,1): error TS1: e1",
+			"src/b.ts(2,2): error TS1: e2",
+		].join("\n");
+		const md = renderFixture(text);
+		const headerLine = md.split("\n")[0] ?? "";
+		expect(headerLine).toBe("# tsc — 2 errors in 2 files");
+		expect(headerLine).not.toMatch(/\(\d+ms\)/);
+	});
+
+	test("footer appears as the last non-empty line with version, hash, duration", () => {
+		const text = "src/foo.ts(1,1): error TS1: x\n";
+		const md = renderFixture(text);
+		expect(md.trimEnd().endsWith("-->")).toBe(true);
+		const lastLine = md.trimEnd().split("\n").at(-1) ?? "";
+		expect(lastLine).toMatch(FOOTER_RE);
+	});
+
+	test("hash is stable across calls with identical findings", () => {
+		const stdout = [
+			"src/a.ts(1,1): error TS2304: Cannot find name 'Foo'.",
+			"src/b.ts(2,2): error TS2322: Type 'string' is not assignable to type 'number'.",
+		].join("\n");
+		const a = tscFilter(
+			{ stdout, stderr: "", exitCode: 1, durationMs: 100 },
+			{ command: "tsc", cwd: "/x", runId: "run_a" },
+		);
+		const b = tscFilter(
+			{ stdout, stderr: "", exitCode: 1, durationMs: 999 },
+			{ command: "tsc", cwd: "/x", runId: "run_a" },
+		);
+		const hashOf = (md: string) => md.match(/hash=([0-9a-f]{8})/)?.[1] ?? "";
+		expect(hashOf(a.markdown)).toBe(hashOf(b.markdown));
+		expect(hashOf(a.markdown)).toMatch(/^[0-9a-f]{8}$/);
+	});
+
+	test("hash differs when findings change", () => {
+		const a = tscFilter(
+			{
+				stdout: "src/a.ts(1,1): error TS2304: Cannot find name 'Foo'.",
+				stderr: "",
+				exitCode: 1,
+				durationMs: 100,
+			},
+			{ command: "tsc", cwd: "/x", runId: "run_a" },
+		);
+		const b = tscFilter(
+			{
+				stdout: "src/b.ts(2,2): error TS2322: Type 'X' is not assignable.",
+				stderr: "",
+				exitCode: 1,
+				durationMs: 100,
+			},
+			{ command: "tsc", cwd: "/x", runId: "run_a" },
+		);
+		const hashOf = (md: string) => md.match(/hash=([0-9a-f]{8})/)?.[1] ?? "";
+		expect(hashOf(a.markdown)).not.toBe(hashOf(b.markdown));
+	});
+
+	test("duration changes do not affect the hash", () => {
+		const stdout = "src/a.ts(1,1): error TS1: e\n";
+		const a = tscFilter(
+			{ stdout, stderr: "", exitCode: 1, durationMs: 1 },
+			{ command: "tsc", cwd: "/x", runId: "run_a" },
+		);
+		const b = tscFilter(
+			{ stdout, stderr: "", exitCode: 1, durationMs: 99999 },
+			{ command: "tsc", cwd: "/x", runId: "run_a" },
+		);
+		const hashOf = (md: string) => md.match(/hash=([0-9a-f]{8})/)?.[1] ?? "";
+		const durationOf = (md: string) => md.match(/duration=(\d+ms)/)?.[1] ?? "";
+		expect(hashOf(a.markdown)).toBe(hashOf(b.markdown));
+		expect(durationOf(a.markdown)).not.toBe(durationOf(b.markdown));
+	});
+
+	test("pass case has the footer too", () => {
+		const view = tscFilter(
+			{ stdout: "", stderr: "", exitCode: 0, durationMs: 42 },
+			{ command: "tsc", cwd: "/x", runId: "run_pass" },
+		);
+		const lines = view.markdown.split("\n");
+		expect(lines[0]).toBe("# tsc — pass");
+		const lastLine = view.markdown.trimEnd().split("\n").at(-1) ?? "";
+		expect(lastLine).toMatch(FOOTER_RE);
+	});
+
+	test("footer renders after the unparsed-lines warning when both are present", () => {
+		const text = "src/foo.ts(1,1): error TS1: x\n";
+		const clusters = clusterDiagnostics(parseTscOutput(text));
+		const md = renderTscMarkdown(clusters, renderOpts({ unparsedLines: [99] }));
+		const lines = md.trimEnd().split("\n");
+		const warnIdx = lines.findIndex((l) => l.startsWith("⚠"));
+		const cacheIdx = lines.findIndex((l) => l.startsWith("<!-- mira:"));
+		expect(warnIdx).toBeGreaterThan(0);
+		expect(cacheIdx).toBeGreaterThan(warnIdx);
+		// Sandwiched blank line between the two footers.
+		expect(lines[cacheIdx - 1]).toBe("");
+		expect(lines[warnIdx + 1]).toBe("");
 	});
 });
 
@@ -462,6 +583,13 @@ describe("tscFilter — filter-level integration", () => {
 			{ command: "tsc --noEmit", cwd: "/x", runId: "run_pass" },
 		);
 		expect(view.findings).toEqual([]);
-		expect(view.markdown).toBe("# tsc — pass (42ms)\n");
+		expect(view.markdown).toBe(
+			[
+				"# tsc — pass",
+				"",
+				`<!-- mira: filterVersion=${TSC_FILTER_VERSION} hash=97d170e1 duration=42ms -->`,
+				"",
+			].join("\n"),
+		);
 	});
 });

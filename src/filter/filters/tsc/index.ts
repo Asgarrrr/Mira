@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import type { Finding } from "../../../core/finding.ts";
 import type { Filter, FilteredView } from "../../types.ts";
 import { clusterDiagnostics } from "./cluster.ts";
@@ -9,7 +11,7 @@ import {
 import { renderTscMarkdown } from "./render.ts";
 
 // Bump when the rendered markdown shape changes.
-export const TSC_FILTER_VERSION = "tsc/5";
+export const TSC_FILTER_VERSION = "tsc/6";
 
 export const tscFilter: Filter = (input, ctx): FilteredView => {
 	const text = mergeStreams(input.stdout, input.stderr);
@@ -25,13 +27,23 @@ export const tscFilter: Filter = (input, ctx): FilteredView => {
 	const unparsedFindings = unparsedLines.map((u) =>
 		buildUnparsedFinding(u, path),
 	);
+	const findings = [...diagFindings, ...unparsedFindings];
 	const clusters = clusterDiagnostics(diags);
 	const markdown = renderTscMarkdown(clusters, {
 		durationMs: input.durationMs,
 		unparsedLines: unparsedLines.map((u) => u.line),
+		filterVersion: TSC_FILTER_VERSION,
+		findingsHash: hashFindings(findings),
 	});
-	return { findings: [...diagFindings, ...unparsedFindings], markdown };
+	return { findings, markdown };
 };
+
+function hashFindings(findings: Finding[]): string {
+	return createHash("sha1")
+		.update(JSON.stringify(findings))
+		.digest("hex")
+		.slice(0, 8);
+}
 
 function mergeStreams(stdout: string, stderr: string): string {
 	if (stderr === "") return stdout;
