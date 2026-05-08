@@ -164,6 +164,52 @@ describe("parseTscOutputWithStats — coverage accounting", () => {
 	});
 });
 
+describe("parseTscOutputWithStats — unparsed line tracking", () => {
+	test("tracks unparsed line indices for noise lines", () => {
+		const text = [
+			"a.ts(1,1): error TS1: msg",
+			"this is unparseable noise",
+			"b.ts(2,2): error TS2: msg2",
+			"another noise line",
+		].join("\n");
+		const { unparsedLines } = parseTscOutputWithStats(text);
+		expect(unparsedLines).toEqual([
+			{ line: 2, text: "this is unparseable noise" },
+			{ line: 4, text: "another noise line" },
+		]);
+	});
+
+	test("skips blanks, summary, continuation lines from the unparsed list", () => {
+		const text = [
+			"a.ts(1,1): error TS1: msg",
+			"  continuation of msg",
+			"",
+			"Found 1 error in 1 file.",
+		].join("\n");
+		const { unparsedLines } = parseTscOutputWithStats(text);
+		expect(unparsedLines).toEqual([]);
+	});
+
+	test("treats orphan continuation (no current diag) as unparsed", () => {
+		const text = ["  orphan indented line", "a.ts(1,1): error TS1: msg"].join(
+			"\n",
+		);
+		const { unparsedLines } = parseTscOutputWithStats(text);
+		expect(unparsedLines).toEqual([
+			{ line: 1, text: "  orphan indented line" },
+		]);
+	});
+
+	test("fixtures small/medium/large have zero unparsed lines", async () => {
+		const dir = `${import.meta.dir}/../src/filter/filters/tsc/__fixtures__`;
+		for (const name of ["small.txt", "medium.txt", "large.txt"]) {
+			const text = await Bun.file(`${dir}/${name}`).text();
+			const { unparsedLines } = parseTscOutputWithStats(text);
+			expect(unparsedLines).toEqual([]);
+		}
+	});
+});
+
 describe("parseTscOutput — fixture expectations (committed counts)", () => {
 	test("small.txt parses to 2 diagnostics", async () => {
 		const text = await Bun.file(

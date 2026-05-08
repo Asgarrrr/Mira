@@ -15,6 +15,8 @@ export type TscDiagnostic = {
 
 export type ParseStats = { linesTotal: number; linesParsed: number };
 
+export type UnparsedLine = { line: number; text: string };
+
 // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI escape (0x1b) stripping is the rule's purpose — matching the control char is intentional, not a bug.
 const ANSI_RE = /\x1b\[[0-9;]*m/g;
 const DIAGNOSTIC_RE =
@@ -48,6 +50,7 @@ function extractSuggestion(diag: TscDiagnostic): void {
 export function parseTscOutputWithStats(text: string): {
 	diags: TscDiagnostic[];
 	stats: ParseStats;
+	unparsedLines: UnparsedLine[];
 } {
 	const lines = text.replace(ANSI_RE, "").split(/\r?\n/);
 	if (lines.at(-1) === "") lines.pop();
@@ -55,6 +58,7 @@ export function parseTscOutputWithStats(text: string): {
 	// `tsc --pretty` lines fail DIAGNOSTIC_RE → zero findings → the
 	// dispatcher's pretty-mode passthrough kicks in.
 	const diags: TscDiagnostic[] = [];
+	const unparsedLines: UnparsedLine[] = [];
 	let current: TscDiagnostic | null = null;
 	let linesParsed = 0;
 
@@ -100,10 +104,15 @@ export function parseTscOutputWithStats(text: string): {
 			continue;
 		}
 		flush();
+		if (line !== "") unparsedLines.push({ line: i + 1, text: line });
 	}
 	flush();
 
-	return { diags, stats: { linesTotal: lines.length, linesParsed } };
+	return {
+		diags,
+		stats: { linesTotal: lines.length, linesParsed },
+		unparsedLines,
+	};
 }
 
 export function parseTscOutput(text: string): TscDiagnostic[] {

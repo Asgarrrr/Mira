@@ -3,7 +3,10 @@ import { describe, expect, test } from "bun:test";
 import { clusterDiagnostics } from "../src/filter/filters/tsc/cluster.ts";
 import { tscFilter } from "../src/filter/filters/tsc/index.ts";
 import { parseTscOutput } from "../src/filter/filters/tsc/parser.ts";
-import { renderTscMarkdown } from "../src/filter/filters/tsc/render.ts";
+import {
+	formatLineRanges,
+	renderTscMarkdown,
+} from "../src/filter/filters/tsc/render.ts";
 
 const FIXTURE_DIR = `${import.meta.dir}/../src/filter/filters/tsc/__fixtures__`;
 
@@ -260,6 +263,84 @@ describe("renderTscMarkdown — preservation invariants on fixtures", () => {
 			}
 		});
 	}
+});
+
+describe("renderTscMarkdown — unparsed footer", () => {
+	test("emits the ⚠ footer when unparsedLines is non-empty", () => {
+		const text = "src/foo.ts(1,1): error TS1: x\n";
+		const clusters = clusterDiagnostics(parseTscOutput(text));
+		const md = renderTscMarkdown(clusters, {
+			durationMs: 1000,
+			unparsedLines: [42],
+		});
+		expect(md).toContain("⚠ 1 unparsed line — see combined.log:42");
+	});
+
+	test("pluralizes 'lines' when more than one", () => {
+		const md = renderTscMarkdown([], {
+			durationMs: 5,
+			unparsedLines: [10, 11],
+		});
+		expect(md).toContain("⚠ 2 unparsed lines — see combined.log:10-11");
+	});
+
+	test("omits the footer when unparsedLines is undefined or empty", () => {
+		const text = "src/foo.ts(1,1): error TS1: x\n";
+		const clusters = clusterDiagnostics(parseTscOutput(text));
+		const a = renderTscMarkdown(clusters, { durationMs: 1000 });
+		const b = renderTscMarkdown(clusters, {
+			durationMs: 1000,
+			unparsedLines: [],
+		});
+		expect(a).not.toContain("⚠");
+		expect(b).not.toContain("⚠");
+	});
+
+	test("appends footer to the pass header when zero clusters but unparsed lines present", () => {
+		const md = renderTscMarkdown([], {
+			durationMs: 7,
+			unparsedLines: [3, 4, 5],
+		});
+		expect(md).toBe(
+			"# tsc — pass (7ms)\n\n⚠ 3 unparsed lines — see combined.log:3-5\n",
+		);
+	});
+
+	test("separates body bullets from footer with a blank line", () => {
+		const text = "src/foo.ts(1,1): error TS1: x\n";
+		const clusters = clusterDiagnostics(parseTscOutput(text));
+		const md = renderTscMarkdown(clusters, {
+			durationMs: 0,
+			unparsedLines: [99],
+		});
+		const lines = md.split("\n");
+		const footerIdx = lines.findIndex((l) => l.startsWith("⚠"));
+		expect(footerIdx).toBeGreaterThan(0);
+		expect(lines[footerIdx - 1]).toBe("");
+	});
+});
+
+describe("formatLineRanges", () => {
+	test("returns '' on empty input", () => {
+		expect(formatLineRanges([])).toBe("");
+	});
+
+	test("renders a singleton as just the number", () => {
+		expect(formatLineRanges([42])).toBe("42");
+	});
+
+	test("collapses a contiguous span as X-Y", () => {
+		expect(formatLineRanges([42, 43, 44])).toBe("42-44");
+	});
+
+	test("mixes singletons and spans", () => {
+		expect(formatLineRanges([42, 50, 51])).toBe("42, 50-51");
+		expect(formatLineRanges([42, 50, 51, 78, 79, 80])).toBe("42, 50-51, 78-80");
+	});
+
+	test("sorts unsorted input defensively", () => {
+		expect(formatLineRanges([80, 42, 79, 51, 78, 50])).toBe("42, 50-51, 78-80");
+	});
 });
 
 describe("renderTscMarkdown — snapshots", () => {
