@@ -102,6 +102,82 @@ describe("renderTscMarkdown — single-finding bullet", () => {
 	});
 });
 
+describe("renderTscMarkdown — overload-aware continuation", () => {
+	test("single overload uses the regular 240-char truncation", () => {
+		const tail = "x".repeat(200);
+		const text = [
+			"a.ts(1,1): error TS2769: No overload matches this call.",
+			`  Overload 1 of 1, '(arg: ${tail}): void', gave the following error.`,
+		].join("\n");
+		const md = renderFixture(text);
+		expect(md).toContain("…");
+		expect(md).not.toContain("(+0 other");
+		expect(md).not.toContain("other overload");
+	});
+
+	test("two overloads keep first entire + '(+1 other overload)'", () => {
+		const text = [
+			"a.ts(1,1): error TS2769: No overload matches this call.",
+			"  Overload 1 of 2, 'sigA', gave the following error.",
+			"    Argument of type 'X' is not assignable to parameter of type 'Y'.",
+			"      Object literal may only specify known properties.",
+			"  Overload 2 of 2, 'sigB', gave the following error.",
+			"    Argument of type 'X' is not assignable to parameter of type 'Z'.",
+		].join("\n");
+		const md = renderFixture(text);
+		expect(md).toContain("Overload 1 of 2, 'sigA', gave the following error.");
+		expect(md).toContain(
+			"Argument of type 'X' is not assignable to parameter of type 'Y'.",
+		);
+		expect(md).toContain("Object literal may only specify known properties.");
+		expect(md).toContain("(+1 other overload)");
+		expect(md).not.toContain("(+1 other overloads)");
+		expect(md).not.toContain("sigB");
+	});
+
+	test("three+ overloads: first kept, '(+N other overloads)'", () => {
+		const text = [
+			"a.ts(1,1): error TS2769: No overload matches this call.",
+			"  Overload 1 of 3, 'sigA', gave the following error.",
+			"    Argument of type 'X' is not assignable to parameter of type 'Y'.",
+			"      Did you mean 'body'?",
+			"  Overload 2 of 3, 'sigB', gave the following error.",
+			"    Argument of type 'string' is not assignable to parameter of type 'URL'.",
+			"  Overload 3 of 3, 'sigC', gave the following error.",
+			"    Argument of type 'X' is missing properties from type 'Request'.",
+		].join("\n");
+		const md = renderFixture(text);
+		expect(md).toContain("Overload 1 of 3, 'sigA', gave the following error.");
+		expect(md).toContain("Did you mean 'body'?");
+		expect(md).toContain("(+2 other overloads)");
+		expect(md).not.toContain("sigB");
+		expect(md).not.toContain("sigC");
+	});
+
+	test("first overload alone past 240 chars is still cut at 240 with …", () => {
+		const sig = "x".repeat(300);
+		const text = [
+			"a.ts(1,1): error TS2769: No overload matches this call.",
+			`  Overload 1 of 2, '${sig}', gave the following error.`,
+			"  Overload 2 of 2, 'sigB', gave the following error.",
+		].join("\n");
+		const md = renderFixture(text);
+		expect(md).toContain("…");
+		expect(md).toContain("(+1 other overload)");
+		const overloadLine =
+			md.split("\n").find((l) => l.includes("Overload 1 of 2")) ?? "";
+		expect(overloadLine.length).toBeLessThan(sig.length);
+	});
+
+	test("non-overload continuation falls back to the existing 240-char truncation", () => {
+		const long = "x".repeat(300);
+		const text = ["a.ts(1,1): error TS1: head", `  ${long}`].join("\n");
+		const md = renderFixture(text);
+		expect(md).toContain("…");
+		expect(md).not.toContain("other overload");
+	});
+});
+
 describe("renderTscMarkdown — top-codes summary line", () => {
 	test("omits the line when only one unique rule is present", () => {
 		const text = [
