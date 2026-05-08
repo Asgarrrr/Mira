@@ -134,6 +134,18 @@ describe("CommandObserver", () => {
 		expect(run.signal).toBeUndefined();
 	});
 
+	test("rejects on spawn error (invalid cwd) without leaking the timeout timer", async () => {
+		const store = new FileEvidenceStore(projectRoot);
+		// Short timeout: if the rejection still left the timer armed, this
+		// test would still pass but the original 300s default would keep an
+		// event-loop handle alive past the test in production. The contract
+		// being documented here is "observe() rejects rather than hangs".
+		const observer = new CommandObserver(store, 200);
+		const badCwd = join(projectRoot, "does-not-exist");
+
+		await expect(observer.observe("echo hi", badCwd)).rejects.toThrow();
+	});
+
 	// Regression for audit H1: when sh's descendants inherit our pipes (subshell
 	// background, fork-and-wait), killing only sh leaves the descendants holding
 	// stdout/stderr open — observe() blocked for the descendant's lifetime instead
