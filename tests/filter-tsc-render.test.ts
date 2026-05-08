@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 
 import { clusterDiagnostics } from "../src/filter/filters/tsc/cluster.ts";
 import {
@@ -11,6 +12,7 @@ import {
 	type RenderOptions,
 	renderTscMarkdown,
 } from "../src/filter/filters/tsc/render.ts";
+import type { FilterInput } from "../src/filter/types.ts";
 
 const FIXTURE_DIR = `${import.meta.dir}/../src/filter/filters/tsc/__fixtures__`;
 const STUB_HASH = "deadbeef";
@@ -503,6 +505,66 @@ describe("renderTscMarkdown — cache-stable footer", () => {
 		expect(hashOf(a.markdown)).not.toBe(hashOf(b.markdown));
 	});
 
+	test("hash is stable across runs with identical input but different runId", () => {
+		// Load-bearing: two real runs of the same tsc invocation must produce
+		// byte-identical footers so the prompt cache hits. Before the fix the
+		// hash was computed over `Finding[]`, which embedded `.mira/runs/<runId>`
+		// paths and so changed on every run.
+		const input: FilterInput = {
+			stdout: "src/foo.ts(1,1): error TS1: x\n",
+			stderr: "",
+			exitCode: 2,
+			durationMs: 100,
+		};
+		const viewA = tscFilter(input, {
+			command: "tsc",
+			cwd: "/x",
+			runId: "run_AAAA_111111",
+		});
+		const viewB = tscFilter(input, {
+			command: "tsc",
+			cwd: "/x",
+			runId: "run_BBBB_222222",
+		});
+
+		const extractHash = (md: string) => md.match(/hash=([0-9a-f]{8})/)?.[1];
+		const hashA = extractHash(viewA.markdown);
+		const hashB = extractHash(viewB.markdown);
+
+		expect(hashA).toBeDefined();
+		expect(hashA).toBe(hashB);
+	});
+
+	test("hash is the literal sha1(JSON.stringify({diags, unparsedLines})).slice(0, 8) for a known input", () => {
+		// Pin the hash function contract: re-using the impl's recipe on the
+		// test side means a refactor that changes the input shape forces both
+		// sides to update together, while a refactor that touches only the
+		// impl trips this assertion.
+		const input: FilterInput = {
+			stdout: "src/foo.ts(1,1): error TS1: x\n",
+			stderr: "",
+			exitCode: 2,
+			durationMs: 0,
+		};
+		const view = tscFilter(input, {
+			command: "tsc",
+			cwd: "/x",
+			runId: "run_AAAA_111111",
+		});
+		const hash = view.markdown.match(/hash=([0-9a-f]{8})/)?.[1];
+
+		const expected = createHash("sha1")
+			.update(
+				JSON.stringify({
+					diags: parseTscOutput("src/foo.ts(1,1): error TS1: x\n"),
+					unparsedLines: [],
+				}),
+			)
+			.digest("hex")
+			.slice(0, 8);
+		expect(hash).toBe(expected);
+	});
+
 	test("duration changes do not affect the hash", () => {
 		const stdout = "src/a.ts(1,1): error TS1: e\n";
 		const a = tscFilter(
@@ -587,7 +649,7 @@ describe("tscFilter — filter-level integration", () => {
 			[
 				"# tsc — pass",
 				"",
-				`<!-- mira: filterVersion=${TSC_FILTER_VERSION} hash=97d170e1 duration=42ms -->`,
+				`<!-- mira: filterVersion=${TSC_FILTER_VERSION} hash=f784dd64 duration=42ms -->`,
 				"",
 			].join("\n"),
 		);

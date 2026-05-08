@@ -33,14 +33,21 @@ export const tscFilter: Filter = (input, ctx): FilteredView => {
 		durationMs: input.durationMs,
 		unparsedLines: unparsedLines.map((u) => u.line),
 		filterVersion: TSC_FILTER_VERSION,
-		findingsHash: hashFindings(findings),
+		// Hash the parser's runId-free projection so identical typecheck output
+		// produces a byte-identical footer across runs (prompt-cache hit). The
+		// `findings` array carries `runId` paths for the Finding API, which is
+		// fresh per run and would otherwise leak into the hash.
+		findingsHash: hashParserOutput(diags, unparsedLines),
 	});
 	return { findings, markdown };
 };
 
-function hashFindings(findings: Finding[]): string {
+function hashParserOutput(
+	diags: TscDiagnostic[],
+	unparsedLines: UnparsedLine[],
+): string {
 	return createHash("sha1")
-		.update(JSON.stringify(findings))
+		.update(JSON.stringify({ diags, unparsedLines }))
 		.digest("hex")
 		.slice(0, 8);
 }
