@@ -4,9 +4,8 @@ import { clusterDiagnostics } from "./cluster.ts";
 import { parseTscOutput, type TscDiagnostic } from "./parser.ts";
 import { renderTscMarkdown } from "./render.ts";
 
-// Bump when the rendered markdown shape changes. Recorded into
-// `observation.json.filterVersion` for each run.
-export const TSC_FILTER_VERSION = "tsc/1";
+// Bump when the rendered markdown shape changes.
+export const TSC_FILTER_VERSION = "tsc/2";
 
 export const tscFilter: Filter = (input, ctx): FilteredView => {
 	const text = mergeStreams(input.stdout, input.stderr);

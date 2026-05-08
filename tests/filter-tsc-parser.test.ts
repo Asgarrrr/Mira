@@ -81,6 +81,27 @@ describe("parseTscOutput — Did you mean extraction", () => {
 	});
 });
 
+describe("parseTscOutput — line-ending handling", () => {
+	test("parses CRLF input the same as LF", () => {
+		const lf =
+			"src/foo.ts(1,1): error TS1: msg\nsrc/bar.ts(2,2): error TS2: m2\n";
+		const crlf = lf.replace(/\n/g, "\r\n");
+		const a = parseTscOutput(lf);
+		const b = parseTscOutput(crlf);
+		expect(b).toHaveLength(2);
+		expect(b[0]?.file).toBe(a[0]?.file);
+		expect(b[0]?.message).toBe(a[0]?.message);
+		expect(b[1]?.file).toBe(a[1]?.file);
+	});
+
+	test("does not leak \\r into rawText or message", () => {
+		const crlf = "src/foo.ts(1,1): error TS1: msg\r\n";
+		const [d] = parseTscOutput(crlf);
+		expect(d?.message).toBe("msg");
+		expect(d?.rawText.endsWith("\r")).toBe(false);
+	});
+});
+
 describe("parseTscOutput — ANSI handling", () => {
 	test("matches diagnostics wrapped in ANSI color escapes", () => {
 		const ansi = "\x1b[31m";

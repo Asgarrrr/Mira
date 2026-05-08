@@ -7,8 +7,7 @@ export type TscDiagnostic = {
 	message: string;
 	continuation: string;
 	suggestion?: string;
-	// Source range (1-indexed) in the parser input. The glue (index.ts) uses
-	// these to build excerpt.lineStart / lineEnd pointing into combined.log.
+	// 1-indexed source range in the parser input.
 	lineStart: number;
 	lineEnd: number;
 	rawText: string;
@@ -30,9 +29,7 @@ type DiagnosticGroups = {
 };
 const CONTINUATION_RE = /^\s{2,}\S/;
 const SUMMARY_RE = /^Found \d+ errors? in \d+ files?\.?\s*$/;
-// Matches the trailing "Did you mean '<x>'?" hint with its leading
-// separator (optional whitespace + dot). Group 1 is the suggestion;
-// `m.index` is where the hint begins, used to slice it off the message.
+// `m.index` marks where the hint begins; we slice it off the message.
 const SUGGESTION_RE = /\s*\.?\s*Did you mean ['"]([^'"]+)['"]\s*\?\s*$/;
 
 function severityFrom(token: string): "error" | "warning" | "info" {
@@ -52,13 +49,11 @@ export function parseTscOutputWithStats(text: string): {
 	diags: TscDiagnostic[];
 	stats: ParseStats;
 } {
-	const lines = text.replace(ANSI_RE, "").split("\n");
-	if (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
+	const lines = text.replace(ANSI_RE, "").split(/\r?\n/);
+	if (lines.at(-1) === "") lines.pop();
 
-	// Pretty-mode (`tsc --pretty`) is not parsed: those lines fail
-	// DIAGNOSTIC_RE so we produce zero findings, and the dispatcher's
-	// "0 findings + non-empty output + non-zero exit" check turns it into
-	// a passthrough (`{ kind: "miss" }`). See `dispatchFilter`.
+	// `tsc --pretty` lines fail DIAGNOSTIC_RE → zero findings → the
+	// dispatcher's pretty-mode passthrough kicks in.
 	const diags: TscDiagnostic[] = [];
 	let current: TscDiagnostic | null = null;
 	let linesParsed = 0;
@@ -74,8 +69,7 @@ export function parseTscOutputWithStats(text: string): {
 		const m = DIAGNOSTIC_RE.exec(line);
 		if (m !== null && m.groups !== undefined) {
 			flush();
-			// Every named group in DIAGNOSTIC_RE is mandatory; if .exec returned
-			// non-null, .groups holds defined strings for all of them.
+			// All named groups are mandatory — non-null match → all defined.
 			const g = m.groups as DiagnosticGroups;
 			current = {
 				file: g.file,

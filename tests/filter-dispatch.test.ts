@@ -48,6 +48,7 @@ const STRIPPING_CASES: Array<[string, string | null]> = [
 	["yarn workspace foo tsc", "tsc"],
 	["pnpm exec 'tsc'", "tsc"],
 	['pnpm exec "tsc"', "tsc"],
+	["bun --bun tsc", "tsc"],
 	["", null],
 	["   ", null],
 	["pnpm", null],

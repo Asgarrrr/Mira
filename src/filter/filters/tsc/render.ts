@@ -6,6 +6,7 @@ export type RenderOptions = { durationMs: number };
 const PLACEHOLDER_LETTERS = ["X", "Y", "Z", "T", "U", "V", "W"];
 const CONTINUATION_LIMIT = 240;
 const TOP_CODES_LIMIT = 5;
+const ALSO_LOCATIONS_LIMIT = 50;
 
 export function renderTscMarkdown(
 	clusters: TscCluster[],
@@ -29,9 +30,8 @@ export function renderTscMarkdown(
 	return `${headerBlock}\n\n${bullets.join("\n")}\n`;
 }
 
-// One-line dominant-rule summary (top 5 by count, ruleId alpha tiebreaker).
-// Skipped when there's only a single unique ruleId — the cluster line below
-// already carries the same info, so the line would be pure redundancy.
+// Skipped when one rule dominates — the cluster line below carries the
+// same info, so the top line would be pure redundancy.
 function formatTopCodes(clusters: TscCluster[]): string | null {
 	const counts = new Map<string, number>();
 	for (const c of clusters) {
@@ -49,9 +49,6 @@ function formatTopCodes(clusters: TscCluster[]): string | null {
 
 function renderCluster(c: TscCluster): string {
 	const [first, ...rest] = c.members;
-	// Clusters always carry ≥1 member by clusterDiagnostics' construction; the
-	// guard satisfies noUncheckedIndexedAccess without a non-null assertion.
-	if (first === undefined) return "";
 	if (rest.length === 0) return renderSingle(first);
 	return renderMultiCluster(c, first, rest);
 }
@@ -100,20 +97,25 @@ function renderContinuation(continuation: string): string {
 }
 
 function renderAlso(members: TscDiagnostic[]): string {
-	type Loc = { line: number; col: number };
-	// Map preserves insertion order — no parallel `order` array needed.
-	const groups = new Map<string, Loc[]>();
-	for (const m of members) {
-		const existing = groups.get(m.file);
-		const loc: Loc = { line: m.line, col: m.column };
-		if (existing === undefined) groups.set(m.file, [loc]);
-		else existing.push(loc);
-	}
+	const groups = Map.groupBy(members, (m) => m.file);
+	// Cap visible locations: a thousand-cascade collapsed into one bullet
+	// must not re-expand into a multi-KB line. Overflow → "+N more".
 	const parts: string[] = [];
-	for (const [file, locations] of groups) {
-		locations.sort((a, b) => a.line - b.line);
-		const locs = locations.map((l) => `${l.line}:${l.col}`).join(", ");
+	let shown = 0;
+	let hidden = 0;
+	for (const [file, diags] of groups) {
+		diags.sort((a, b) => a.line - b.line);
+		const remaining = ALSO_LOCATIONS_LIMIT - shown;
+		if (remaining <= 0) {
+			hidden += diags.length;
+			continue;
+		}
+		const visible = diags.slice(0, remaining);
+		hidden += diags.length - visible.length;
+		const locs = visible.map((d) => `${d.line}:${d.column}`).join(", ");
 		parts.push(`${file} at ${locs}`);
+		shown += visible.length;
 	}
-	return parts.join("; ");
+	const joined = parts.join("; ");
+	return hidden > 0 ? `${joined} · +${hidden} more` : joined;
 }
