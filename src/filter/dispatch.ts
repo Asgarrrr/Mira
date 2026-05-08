@@ -1,5 +1,10 @@
-import { REGISTRY, type RegistryEntry } from "./registry.ts";
-import type { DispatchResult, FilterContext, FilterInput } from "./types.ts";
+import { REGISTRY } from "./registry.ts";
+import type {
+	DispatchResult,
+	FilterContext,
+	FilterInput,
+	RegistryEntry,
+} from "./types.ts";
 
 const WRAPPERS = new Set(["pnpm", "npm", "yarn", "bun", "npx", "bunx"]);
 const WRAPPER_SUB_TOKENS = new Set(["run", "exec", "dlx", "x"]);
@@ -17,9 +22,8 @@ const SINGLE_TOKEN_FLAG_WITH_VALUE = /^--[^=\s]+=/;
 const MAX_KEY_TOKENS = 2;
 
 // Strip wrapper noise from the front of a command and return the remaining
-// tokens (program, sub-program, args, …). Shared by `extractProgramToken`
-// (returns the first one) and `extractTokens` (returns up to N for
-// multi-token registry-key resolution).
+// tokens (program, sub-program, args, …). `extractTokens` slices the prefix
+// used as a registry key.
 function postWrapperTokens(command: string): string[] {
 	const stripped = command.trimStart().replace(ENV_PREFIX, "");
 	const tokens = stripped.split(/\s+/).filter((t) => t.length > 0);
@@ -29,12 +33,6 @@ function postWrapperTokens(command: string): string[] {
 		const head = tokens[i];
 		if (head === undefined || !WRAPPERS.has(head)) break;
 		i++;
-		// Inside the wrapper iteration, repeatedly consume "wrapper noise" from
-		// the front: sub-commands (`run`, `exec`, `dlx`, `x`), bare flags
-		// (`--silent`, `-s`, `--`), single-token flag-with-value (`--key=val`),
-		// and known flag-value pairs (`--filter foo`, `workspace foo`). Stop as
-		// soon as none of these match — the next token is either another
-		// wrapper (outer loop continues) or the program.
 		while (i < tokens.length) {
 			const next = tokens[i];
 			if (next === undefined) break;
@@ -55,11 +53,6 @@ function postWrapperTokens(command: string): string[] {
 	}
 
 	return tokens.slice(i).map((t) => t.replace(/^['"]|['"]$/g, ""));
-}
-
-export function extractProgramToken(command: string): string | null {
-	const t = postWrapperTokens(command);
-	return t[0] ?? null;
 }
 
 // Returns up to `MAX_KEY_TOKENS` post-wrapper tokens, used by

@@ -15,17 +15,16 @@ debugging.
 ```
 src/filter/
 ├── README.md              # this file
-├── types.ts               # Filter, FilterContext, FilterInput, FilteredView, DispatchResult
+├── types.ts               # Filter, FilterContext, FilterInput, FilteredView, DispatchResult, RegistryEntry
 ├── dispatch.ts            # token extraction + multi-token key resolution
 ├── registry.ts            # single Map<key, RegistryEntry>, assembled from per-program entries
 └── filters/
     └── <program>/
         ├── entries.ts     # registry contributions for this program
-        ├── index.ts       # the Filter glue (assembles parser + cluster + render)
+        ├── index.ts       # the Filter glue (assembles parser + cluster + render); also owns the version literal
         ├── parser.ts      # raw text → structured findings
         ├── cluster.ts     # (optional) collapse repeats by message shape
         ├── render.ts      # findings → markdown
-        ├── version.ts     # filter version literal (single source of truth)
         └── __fixtures__/  # captured-output test data
 ```
 
@@ -60,15 +59,16 @@ src/filter/filters/foo/
 ├── index.ts
 ├── parser.ts
 ├── render.ts
-├── version.ts
 └── __fixtures__/
     └── sources/         # captured raw output of `foo` runs you want to support
 ```
 
 ### 2. Pin the filter version
 
+The version literal lives in the glue file, exported alongside the filter:
+
 ```ts
-// src/filter/filters/foo/version.ts
+// src/filter/filters/foo/index.ts
 export const FOO_FILTER_VERSION = "foo/1";
 ```
 
@@ -112,7 +112,7 @@ import type { Filter, FilteredView } from "../../types.ts";
 import { parseFooOutput } from "./parser.ts";
 import { renderFooMarkdown } from "./render.ts";
 
-export { FOO_FILTER_VERSION } from "./version.ts";
+export const FOO_FILTER_VERSION = "foo/1";
 
 export const fooFilter: Filter = (input, ctx): FilteredView => {
   const findings = parseFooOutput(input.stdout + input.stderr);
@@ -125,9 +125,8 @@ export const fooFilter: Filter = (input, ctx): FilteredView => {
 
 ```ts
 // src/filter/filters/foo/entries.ts
-import type { RegistryEntry } from "../../registry.ts";
-import { fooFilter } from "./index.ts";
-import { FOO_FILTER_VERSION } from "./version.ts";
+import type { RegistryEntry } from "../../types.ts";
+import { fooFilter, FOO_FILTER_VERSION } from "./index.ts";
 
 export const fooEntries: ReadonlyArray<readonly [string, RegistryEntry]> = [
   ["foo", { filter: fooFilter, version: FOO_FILTER_VERSION }],
@@ -178,10 +177,9 @@ src/filter/filters/git/
 ├── entries.ts            # exports gitEntries with one tuple per sub-program
 ├── shared/               # primitives shared across git/* (e.g. parse-porcelain.ts)
 └── diff/
-    ├── index.ts
+    ├── index.ts          # glue + GIT_DIFF_VERSION
     ├── parser.ts
     ├── render.ts
-    ├── version.ts
     └── __fixtures__/
 └── status/
     ├── index.ts
@@ -193,7 +191,7 @@ above). The umbrella's `entries.ts` lists them all:
 
 ```ts
 // src/filter/filters/git/entries.ts
-import type { RegistryEntry } from "../../registry.ts";
+import type { RegistryEntry } from "../../types.ts";
 import { gitDiffFilter, GIT_DIFF_VERSION } from "./diff/index.ts";
 import { gitStatusFilter, GIT_STATUS_VERSION } from "./status/index.ts";
 
@@ -239,8 +237,9 @@ create the directory until two filters genuinely need to share something.
 
 ## Conventions
 
-- **Filter version is a literal in `version.ts`** — the only place. Bump on
-  output-format changes. Tests assert it via `tests/filter-types.test.ts`.
+- **Filter version is a literal in the glue `index.ts`** — the only place,
+  exported alongside the filter. Bump on output-format changes. Tests assert
+  it via `tests/filter-types.test.ts`.
 - **Pretty-mode passthrough**: when the parser sees only ANSI-styled
   human-pretty output it can't parse, return zero findings. The dispatcher
   detects `0 findings + non-empty output + non-zero exit` and switches to

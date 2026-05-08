@@ -8,8 +8,3 @@ export const REGISTRY: Map<string, RegistryEntry> = new Map<
 	string,
 	RegistryEntry
 >([...tscEntries]);
-
-// Re-export so existing consumers (`dispatch.ts`, tests) can keep importing
-// `RegistryEntry` from `./registry.ts` without churn. The canonical home is
-// `./types.ts`.
-export type { RegistryEntry } from "./types.ts";
