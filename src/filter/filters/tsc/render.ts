@@ -1,7 +1,12 @@
 import type { TscCluster } from "./cluster.ts";
 import type { TscDiagnostic } from "./parser.ts";
 
-export type RenderOptions = { durationMs: number; unparsedLines?: number[] };
+export type RenderOptions = {
+	durationMs: number;
+	unparsedLines?: number[];
+	filterVersion: string;
+	findingsHash: string;
+};
 
 const PLACEHOLDER_LETTERS = ["X", "Y", "Z", "T", "U", "V", "W"];
 const CONTINUATION_LIMIT = 240;
@@ -14,10 +19,10 @@ export function renderTscMarkdown(
 	opts: RenderOptions,
 ): string {
 	const unparsed = opts.unparsedLines ?? [];
-	const footer = formatUnparsedFooter(unparsed);
+	const warnFooter = formatUnparsedFooter(unparsed);
+	const cacheFooter = formatCacheFooter(opts);
 	if (clusters.length === 0) {
-		const head = `# tsc — pass (${opts.durationMs}ms)`;
-		return footer === null ? `${head}\n` : `${head}\n\n${footer}\n`;
+		return joinSections([`# tsc — pass`, warnFooter, cacheFooter]);
 	}
 	let errors = 0;
 	let warnings = 0;
@@ -37,12 +42,21 @@ export function renderTscMarkdown(
 	if (warnings > 0)
 		counts.push(`${warnings} ${warnings === 1 ? "warning" : "warnings"}`);
 	if (infos > 0) counts.push(`${infos} info`);
-	const header = `# tsc — ${counts.join(", ")} in ${fileSet.size} ${fileWord} (${opts.durationMs}ms)`;
+	const header = `# tsc — ${counts.join(", ")} in ${fileSet.size} ${fileWord}`;
 	const topLine = formatTopCodes(clusters);
 	const headerBlock = topLine === null ? header : `${header}\n${topLine}`;
 	const bullets = clusters.map(renderCluster);
 	const body = `${headerBlock}\n\n${bullets.join("\n")}`;
-	return footer === null ? `${body}\n` : `${body}\n\n${footer}\n`;
+	return joinSections([body, warnFooter, cacheFooter]);
+}
+
+function joinSections(sections: (string | null)[]): string {
+	const present = sections.filter((s): s is string => s !== null);
+	return `${present.join("\n\n")}\n`;
+}
+
+function formatCacheFooter(opts: RenderOptions): string {
+	return `<!-- mira: filterVersion=${opts.filterVersion} hash=${opts.findingsHash} duration=${opts.durationMs}ms -->`;
 }
 
 function formatUnparsedFooter(unparsed: number[]): string | null {

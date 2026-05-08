@@ -90,7 +90,7 @@ describe.skipIf(!TSC_AVAILABLE)("mira run tsc (E2E)", () => {
 			readFileSync(join(runDir, "observation.json"), "utf8"),
 		);
 		expect(observation.status).toBe("failure");
-		expect(observation.filterVersion).toBe("tsc/5");
+		expect(observation.filterVersion).toBe("tsc/6");
 		expect(Array.isArray(observation.findings)).toBe(true);
 		expect(observation.findings.length).toBeGreaterThan(0);
 		expect(observation.findings[0].severity).toBe("error");

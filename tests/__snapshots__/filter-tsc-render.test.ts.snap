@@ -1,16 +1,18 @@
 // Bun Snapshot v1, https://bun.sh/docs/test/snapshots
 
 exports[`renderTscMarkdown — snapshots small.txt renders to a stable markdown snapshot 1`] = `
-"# tsc — 2 errors in 1 file (1000ms)
+"# tsc — 2 errors in 1 file
 _top: TS2307 (1×) · TS2322 (1×)_
 
 - **TS2307** src/filter/filters/tsc/__fixtures__/sources/small.ts:1:25 — Cannot find module './does-not-exist' or its corresponding type declarations.
 - **TS2322** src/filter/filters/tsc/__fixtures__/sources/small.ts:4:7 — Type 'string' is not assignable to type 'number'.
+
+<!-- mira: filterVersion=tsc/6 hash=deadbeef duration=1000ms -->
 "
 `;
 
 exports[`renderTscMarkdown — snapshots medium.txt renders to a stable markdown snapshot 1`] = `
-"# tsc — 12 errors in 7 files (1000ms)
+"# tsc — 12 errors in 7 files
 _top: TS2739 (8×) · TS2339 (1×) · TS2488 (1×) · TS2769 (1×) · TS7006 (1×)_
 
 - **TS2739** ×8 — same shape: Type X is missing the following properties from type Y: path, kind
@@ -22,14 +24,18 @@ _top: TS2739 (8×) · TS2339 (1×) · TS2488 (1×) · TS2769 (1×) · TS7006 (1�
     Overload 1 of 2, '(expected: { id: string; runId: string; command: string; status: "success" | "failure"; exitCode: number | null; killedByTimeout: boolean; durationMs: number; summary: string; findings: { id: string; ... 5 more ...; rel…
   (+1 other overload)
 - **TS7006** src/context/context-pack-generator.ts:34:46 — Parameter 'r' implicitly has an 'any' type.
+
+<!-- mira: filterVersion=tsc/6 hash=deadbeef duration=1000ms -->
 "
 `;
 
 exports[`renderTscMarkdown — snapshots large.txt renders to a stable markdown snapshot 1`] = `
-"# tsc — 32 errors in 1 file (1000ms)
+"# tsc — 32 errors in 1 file
 
 - **TS2739** ×32 — same shape: Type X is missing the following properties from type Y: y, z
   e.g. src/filter/filters/tsc/__fixtures__/sources/large.ts:3:7 — Type '{ x: number; }' is missing the following properties from type 'Vec': y, z
   also: src/filter/filters/tsc/__fixtures__/sources/large.ts at 4:7, 5:7, 6:7, 7:7, 8:7, 9:7, 10:7, 11:7, 12:7, 13:7, 14:7, 15:7, 16:7, 17:7, 18:7, 19:7, 20:7, 21:7, 22:7, 23:7, 24:7, 25:7, 26:7, 27:7, 28:7, 29:7, 30:7, 31:7, 32:7, 33:7, 34:7
+
+<!-- mira: filterVersion=tsc/6 hash=deadbeef duration=1000ms -->
 "
 `;
