@@ -1,7 +1,7 @@
 import type { TscCluster } from "./cluster.ts";
 import type { TscDiagnostic } from "./parser.ts";
 
-export type RenderOptions = { durationMs: number };
+export type RenderOptions = { durationMs: number; unparsedLines?: number[] };
 
 const PLACEHOLDER_LETTERS = ["X", "Y", "Z", "T", "U", "V", "W"];
 const CONTINUATION_LIMIT = 240;
@@ -12,8 +12,11 @@ export function renderTscMarkdown(
 	clusters: TscCluster[],
 	opts: RenderOptions,
 ): string {
+	const unparsed = opts.unparsedLines ?? [];
+	const footer = formatUnparsedFooter(unparsed);
 	if (clusters.length === 0) {
-		return `# tsc — pass (${opts.durationMs}ms)\n`;
+		const head = `# tsc — pass (${opts.durationMs}ms)`;
+		return footer === null ? `${head}\n` : `${head}\n\n${footer}\n`;
 	}
 	let errors = 0;
 	let warnings = 0;
@@ -37,7 +40,36 @@ export function renderTscMarkdown(
 	const topLine = formatTopCodes(clusters);
 	const headerBlock = topLine === null ? header : `${header}\n${topLine}`;
 	const bullets = clusters.map(renderCluster);
-	return `${headerBlock}\n\n${bullets.join("\n")}\n`;
+	const body = `${headerBlock}\n\n${bullets.join("\n")}`;
+	return footer === null ? `${body}\n` : `${body}\n\n${footer}\n`;
+}
+
+function formatUnparsedFooter(unparsed: number[]): string | null {
+	if (unparsed.length === 0) return null;
+	const word = unparsed.length === 1 ? "line" : "lines";
+	return `⚠ ${unparsed.length} unparsed ${word} — see combined.log:${formatLineRanges(unparsed)}`;
+}
+
+export function formatLineRanges(lines: number[]): string {
+	if (lines.length === 0) return "";
+	// Dedupe defensively: callers pass unique inputs today, but this function
+	// is exported and tested in isolation — `[5, 5]` should yield "5", not "5, 5".
+	const sorted = [...new Set(lines)].sort((a, b) => a - b);
+	const parts: string[] = [];
+	let start = sorted[0] as number;
+	let prev = start;
+	for (let i = 1; i < sorted.length; i++) {
+		const n = sorted[i] as number;
+		if (n === prev + 1) {
+			prev = n;
+			continue;
+		}
+		parts.push(start === prev ? `${start}` : `${start}-${prev}`);
+		start = n;
+		prev = n;
+	}
+	parts.push(start === prev ? `${start}` : `${start}-${prev}`);
+	return parts.join(", ");
 }
 
 // Skipped when one rule dominates — the cluster line below carries the

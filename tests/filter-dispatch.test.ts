@@ -268,6 +268,24 @@ describe("dispatchFilter", () => {
 		}
 	});
 
+	test("pretty-mode tsc output + non-zero exit → kind: 'miss' (passthrough)", () => {
+		// Regression guard: with quarantine-don't-drop the tsc filter now emits
+		// info-severity findings for unparsed lines. The glue must short-circuit
+		// (return an empty view) on a failed pretty-mode run so the dispatcher's
+		// own pretty-mode rule still kicks in.
+		const prettyOutput = [
+			"src/foo.ts:34:7 - error TS2304: Cannot find name 'Bar'.",
+			"",
+			"34 const x: Bar = ...",
+		].join("\n");
+		const result = dispatchFilter(
+			"tsc --noEmit",
+			{ stdout: prettyOutput, stderr: "", exitCode: 2, durationMs: 5 },
+			{ command: "tsc", cwd: "/x", runId: "rPretty" },
+		);
+		expect(result).toEqual({ kind: "miss" });
+	});
+
 	test("zero findings on empty input + zero exit code is still a hit (legitimate pass)", () => {
 		const view = { findings: [], markdown: "# tsc — pass" };
 		const filter: Filter = () => view;
