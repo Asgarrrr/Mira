@@ -65,7 +65,7 @@ the output regardless. Verify the working tree is clean afterwards
 - `--pretty=false` output has no leading "Found N errors" summary in TS
   5.9.3. Each diagnostic is a single line with a possible block of
   indented continuation lines (`tests/command-observation.test.ts(40,4)`
-  in `medium.txt` is the example: TS2769 followed by four `  Overload …`
+  in `medium.txt` is the example: TS2769 followed by two `  Overload …`
   lines).
 - All paths are relative to the cwd at capture time. `small.txt` and
   `large.txt` paths begin with `src/filter/filters/tsc/__fixtures__/sources/`;

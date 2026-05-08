@@ -7,6 +7,7 @@ const PLACEHOLDER_LETTERS = ["X", "Y", "Z", "T", "U", "V", "W"];
 const CONTINUATION_LIMIT = 240;
 const TOP_CODES_LIMIT = 5;
 const ALSO_LOCATIONS_LIMIT = 50;
+const OVERLOAD_RE = /^\s+Overload \d+ of \d+,/;
 
 export function renderTscMarkdown(
 	clusters: TscCluster[],
@@ -125,6 +126,16 @@ function expandTemplate(normalized: string): string {
 }
 
 function renderContinuation(continuation: string): string {
+	const lines = continuation.split("\n");
+	const overloadIdx = lines.flatMap((l, i) => (OVERLOAD_RE.test(l) ? [i] : []));
+	if (overloadIdx.length < 2) return truncateAndIndent(continuation);
+	const firstBlock = lines.slice(0, overloadIdx[1]).join("\n");
+	const remaining = overloadIdx.length - 1;
+	const noun = remaining === 1 ? "overload" : "overloads";
+	return `${truncateAndIndent(firstBlock)}\n  (+${remaining} other ${noun})`;
+}
+
+function truncateAndIndent(continuation: string): string {
 	let body = continuation;
 	let truncated = false;
 	if (body.length > CONTINUATION_LIMIT) {

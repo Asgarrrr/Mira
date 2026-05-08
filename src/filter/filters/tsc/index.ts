@@ -9,7 +9,7 @@ import {
 import { renderTscMarkdown } from "./render.ts";
 
 // Bump when the rendered markdown shape changes.
-export const TSC_FILTER_VERSION = "tsc/4";
+export const TSC_FILTER_VERSION = "tsc/5";
 
 export const tscFilter: Filter = (input, ctx): FilteredView => {
 	const text = mergeStreams(input.stdout, input.stderr);

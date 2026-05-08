@@ -20,6 +20,7 @@ _top: TS2739 (8×) · TS2339 (1×) · TS2488 (1×) · TS2769 (1×) · TS7006 (1�
 - **TS2488** src/render/render-observation.ts:41:20 — Type '{ path: string; kind: "stdout" | "stderr" | "combined" | "metadata" | "observation" | "context" | "other"; description?: string | undefined; }' must have a '[Symbol.iterator]()' method that returns an iterator.
 - **TS2769** tests/command-observation.test.ts:40:4 — No overload matches this call.
     Overload 1 of 2, '(expected: { id: string; runId: string; command: string; status: "success" | "failure"; exitCode: number | null; killedByTimeout: boolean; durationMs: number; summary: string; findings: { id: string; ... 5 more ...; rel…
+  (+1 other overload)
 - **TS7006** src/context/context-pack-generator.ts:34:46 — Parameter 'r' implicitly has an 'any' type.
 "
 `;
