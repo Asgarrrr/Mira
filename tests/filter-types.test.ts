@@ -13,7 +13,7 @@ describe("filter/registry", () => {
 	test("registers tsc with its version", () => {
 		const entry = REGISTRY.get("tsc");
 		expect(entry).toBeDefined();
-		expect(entry?.version).toBe("tsc/1");
+		expect(entry?.version).toBe("tsc/2");
 		expect(typeof entry?.filter).toBe("function");
 	});
 });

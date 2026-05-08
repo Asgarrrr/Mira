@@ -8,7 +8,7 @@ import type {
 
 const WRAPPERS = new Set(["pnpm", "npm", "yarn", "bun", "npx", "bunx"]);
 const WRAPPER_SUB_TOKENS = new Set(["run", "exec", "dlx", "x"]);
-const WRAPPER_BARE_FLAGS = new Set(["--silent", "-s", "--"]);
+const WRAPPER_BARE_FLAGS = new Set(["--silent", "-s", "--", "--bun"]);
 const WRAPPER_FLAG_PAIRS = new Set(["--filter", "workspace"]);
 
 const ENV_PREFIX = /^(?:[A-Z_][A-Z0-9_]*=\S+\s+)+/;
@@ -21,9 +21,6 @@ const SINGLE_TOKEN_FLAG_WITH_VALUE = /^--[^=\s]+=/;
 // to shorter prefixes.
 const MAX_KEY_TOKENS = 2;
 
-// Strip wrapper noise from the front of a command and return the remaining
-// tokens (program, sub-program, args, …). `extractTokens` slices the prefix
-// used as a registry key.
 function postWrapperTokens(command: string): string[] {
 	const stripped = command.trimStart().replace(ENV_PREFIX, "");
 	const tokens = stripped.split(/\s+/).filter((t) => t.length > 0);
@@ -55,22 +52,12 @@ function postWrapperTokens(command: string): string[] {
 	return tokens.slice(i).map((t) => t.replace(/^['"]|['"]$/g, ""));
 }
 
-// Returns up to `MAX_KEY_TOKENS` post-wrapper tokens, used by
-// `findRegistryEntry` for longest-prefix-match against the registry. For
-// `git diff HEAD~1` this returns `["git", "diff"]`; for `tsc --noEmit` it
-// returns `["tsc", "--noEmit"]`. Ordering preserved.
 export function extractTokens(command: string): string[] {
 	return postWrapperTokens(command).slice(0, MAX_KEY_TOKENS);
 }
 
-// Longest-prefix match against the registry. Tries the N-token key first,
-// falls back through (N-1)…1. Returns `undefined` when no key matches.
-// Caller controls the cap by sizing `tokens` (`extractTokens` slices to
-// `MAX_KEY_TOKENS`); this function just walks what it's given.
-//
-// Example: for tokens = ["git", "diff"] and a registry holding "git diff" and
-// "git", "git diff" wins. For tokens = ["tsc", "--noEmit"] and a registry
-// holding only "tsc", the 2-token attempt misses and we fall back to "tsc".
+// Longest-prefix match: ["git", "diff"] beats ["git"] when both are
+// registered; falls back to shorter prefixes on miss.
 export function findRegistryEntry(
 	tokens: string[],
 	registry: Map<string, RegistryEntry>,
@@ -94,12 +81,9 @@ export function dispatchFilter(
 	if (entry === undefined) return { kind: "miss" };
 	try {
 		const view = entry.filter(input, ctx);
-		// Pretty-mode passthrough: if a filter saw non-empty output on a
-		// non-successful run but produced zero findings, its parser hit a
-		// format it does not recognize (e.g. tsc `--pretty` mode) or the run
-		// was signal-killed. Treat as miss so the agent gets raw output
-		// instead of a wrong "<program> — pass" header. `exitCode !== 0`
-		// covers both non-zero (failed) and `null` (signal-killed).
+		// Pretty-mode passthrough: zero findings on a failed run means the
+		// parser hit unrecognized output (e.g. `tsc --pretty`). Falling back
+		// to raw output beats a wrong "<program> — pass" header.
 		if (
 			view.findings.length === 0 &&
 			input.stdout.length + input.stderr.length > 0 &&
@@ -109,9 +93,6 @@ export function dispatchFilter(
 		}
 		return { kind: "hit", view, filterVersion: entry.version };
 	} catch (cause) {
-		// Surface the program token so the user-facing notice in runCommand
-		// remains specific even when we resolved a multi-token key (the first
-		// token is the natural anchor for "filter for X threw").
 		return { kind: "error", program: tokens[0] ?? "<unknown>", cause };
 	}
 }

@@ -152,6 +152,38 @@ describe("renderTscMarkdown — cluster bullet", () => {
 		const md = renderFixture(text);
 		expect(md).toContain("  also: a.ts at 2:2; b.ts at 3:3");
 	});
+
+	test("caps also-line locations and emits '+N more' past the limit", () => {
+		// Build one cluster of 200 same-shape errors in a single file. The
+		// e.g. line takes one location, so 199 candidates remain for `also:`.
+		// With ALSO_LOCATIONS_LIMIT=50 the line should hold 50 triples and a
+		// trailing ` · +149 more` marker.
+		const lines: string[] = [];
+		for (let i = 1; i <= 200; i++) {
+			lines.push(
+				`src/foo.ts(${i},7): error TS2739: Type '{ x: ${i}; }' is missing the following properties from type 'Vec': y, z`,
+			);
+		}
+		const md = renderFixture(lines.join("\n"));
+		const alsoLine = md.split("\n").find((l) => l.startsWith("  also:")) ?? "";
+		expect(alsoLine).toContain("+149 more");
+		// 50 visible triples in the also list (e.g. line carries the 200th).
+		const triples = alsoLine.match(/\d+:\d+/g) ?? [];
+		expect(triples.length).toBe(50);
+		// Sanity: the truncation marker keeps the line bounded.
+		expect(alsoLine.length).toBeLessThan(700);
+	});
+
+	test("does not append '+N more' when the cluster fits under the limit", () => {
+		const lines: string[] = [];
+		for (let i = 1; i <= 10; i++) {
+			lines.push(
+				`src/foo.ts(${i},7): error TS2739: Type '{ x: ${i}; }' is missing the following properties from type 'Vec': y, z`,
+			);
+		}
+		const md = renderFixture(lines.join("\n"));
+		expect(md).not.toContain("more");
+	});
 });
 
 describe("renderTscMarkdown — preservation invariants on fixtures", () => {

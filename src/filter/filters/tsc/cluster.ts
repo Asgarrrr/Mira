@@ -1,9 +1,11 @@
 import type { TscDiagnostic } from "./parser.ts";
 
+type NonEmpty<T> = [T, ...T[]];
+
 export type TscCluster = {
 	ruleId: string;
 	normalizedMessage: string;
-	members: TscDiagnostic[];
+	members: NonEmpty<TscDiagnostic>;
 };
 
 export function normalizeMessage(message: string): string {
@@ -11,10 +13,7 @@ export function normalizeMessage(message: string): string {
 }
 
 export function clusterDiagnostics(diags: TscDiagnostic[]): TscCluster[] {
-	// Two-level grouping (ruleId → normalizedMessage → members). Map preserves
-	// insertion order, so iterating buckets directly yields first-seen order
-	// without a parallel index. No packed string key, no split-on-space.
-	const buckets = new Map<string, Map<string, TscDiagnostic[]>>();
+	const buckets = new Map<string, Map<string, NonEmpty<TscDiagnostic>>>();
 	for (const d of diags) {
 		const norm = normalizeMessage(d.message);
 		let byMessage = buckets.get(d.ruleId);
@@ -40,7 +39,7 @@ export function clusterDiagnostics(diags: TscDiagnostic[]): TscCluster[] {
 		(a, b) =>
 			b.members.length - a.members.length ||
 			a.ruleId.localeCompare(b.ruleId) ||
-			(a.members[0]?.file ?? "").localeCompare(b.members[0]?.file ?? ""),
+			a.members[0].file.localeCompare(b.members[0].file),
 	);
 	return clusters;
 }
