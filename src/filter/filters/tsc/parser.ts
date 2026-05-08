@@ -28,7 +28,6 @@ type DiagnosticGroups = {
 	rule: string;
 	msg: string;
 };
-const PRETTY_RE = /^[^\s].*?:\d+:\d+\s+-\s+(?:error|warning)\s+TS\d+:/;
 const CONTINUATION_RE = /^\s{2,}\S/;
 const SUMMARY_RE = /^Found \d+ errors? in \d+ files?\.?\s*$/;
 const SUGGESTION_EXTRACT_RE = /Did you mean ['"]([^'"]+)['"]\s*\?\s*$/;
@@ -54,20 +53,10 @@ export function parseTscOutputWithStats(text: string): {
 	const lines = text.replace(ANSI_RE, "").split("\n");
 	if (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
 
-	// Pretty-mode passthrough: if the input only contains pretty-shaped
-	// diagnostics (none match our regex), produce zero findings so the
-	// dispatcher falls back to raw output. § 9 of the plan: --pretty is
-	// unsupported in V0.4.
-	let nonPretty = 0;
-	let pretty = 0;
-	for (const line of lines) {
-		if (DIAGNOSTIC_RE.test(line)) nonPretty++;
-		else if (PRETTY_RE.test(line)) pretty++;
-	}
-	if (pretty > 0 && nonPretty === 0) {
-		return { diags: [], stats: { linesTotal: lines.length, linesParsed: 0 } };
-	}
-
+	// Pretty-mode (`tsc --pretty`) is not parsed: those lines fail
+	// DIAGNOSTIC_RE so we produce zero findings, and the dispatcher's
+	// "0 findings + non-empty output + non-zero exit" check turns it into
+	// a passthrough (`{ kind: "miss" }`). See `dispatchFilter`.
 	const diags: TscDiagnostic[] = [];
 	let current: TscDiagnostic | null = null;
 	let linesParsed = 0;

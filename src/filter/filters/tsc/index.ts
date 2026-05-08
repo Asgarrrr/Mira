@@ -4,7 +4,9 @@ import { clusterDiagnostics } from "./cluster.ts";
 import { parseTscOutput, type TscDiagnostic } from "./parser.ts";
 import { renderTscMarkdown } from "./render.ts";
 
-export { TSC_FILTER_VERSION } from "./version.ts";
+// Bump when the rendered markdown shape changes. Recorded into
+// `observation.json.filterVersion` for each run.
+export const TSC_FILTER_VERSION = "tsc/1";
 
 export const tscFilter: Filter = (input, ctx): FilteredView => {
 	const text = mergeStreams(input.stdout, input.stderr);
@@ -25,11 +27,10 @@ function mergeStreams(stdout: string, stderr: string): string {
 
 function buildFinding(d: TscDiagnostic, idx: number, runId: string): Finding {
 	const path = `.mira/runs/${runId}/combined.log`;
-	const titleMsg = d.message.split("\n")[0]?.slice(0, 120) ?? "";
 	return {
 		id: `tsc-${idx}`,
 		severity: d.severity,
-		title: `${d.ruleId}: ${titleMsg}`,
+		title: `${d.ruleId}: ${d.message.slice(0, 120)}`,
 		description:
 			d.continuation === "" ? d.message : `${d.message}\n${d.continuation}`,
 		excerpts: [

@@ -2,15 +2,15 @@ import { afterEach, describe, expect, test } from "bun:test";
 
 import {
 	dispatchFilter,
-	extractProgramToken,
 	extractTokens,
 	findRegistryEntry,
 } from "../src/filter/dispatch.ts";
-import { REGISTRY, type RegistryEntry } from "../src/filter/registry.ts";
+import { REGISTRY } from "../src/filter/registry.ts";
 import type {
 	Filter,
 	FilterContext,
 	FilterInput,
+	RegistryEntry,
 } from "../src/filter/types.ts";
 
 const INPUT: FilterInput = {
@@ -25,6 +25,10 @@ const CTX: FilterContext = {
 	runId: "run_1",
 };
 
+// First-token outcomes of `extractTokens` after wrapper-stripping. Kept as
+// a table because the wrapper grammar (npm/yarn/pnpm/bun/bunx/npx, env
+// prefixes, --filter pairs, --silent flags, quoted args) is the fragile
+// part of the dispatcher.
 const STRIPPING_CASES: Array<[string, string | null]> = [
 	["tsc --noEmit", "tsc"],
 	["pnpm tsc --noEmit", "tsc"],
@@ -52,18 +56,12 @@ const STRIPPING_CASES: Array<[string, string | null]> = [
 	["./node_modules/.bin/tsc", "./node_modules/.bin/tsc"],
 ];
 
-describe("extractProgramToken", () => {
+describe("extractTokens — wrapper stripping", () => {
 	for (const [input, expected] of STRIPPING_CASES) {
 		test(`${JSON.stringify(input)} → ${JSON.stringify(expected)}`, () => {
-			expect(extractProgramToken(input)).toBe(expected);
+			expect(extractTokens(input)[0] ?? null).toBe(expected);
 		});
 	}
-});
-
-describe("extractTokens", () => {
-	test("returns the program token for a bare command", () => {
-		expect(extractTokens("tsc --noEmit")).toEqual(["tsc", "--noEmit"]);
-	});
 
 	test("returns up to MAX_KEY_TOKENS post-wrapper tokens", () => {
 		// MAX_KEY_TOKENS is 2 today — verify the cap behavior at the boundary.
@@ -75,12 +73,9 @@ describe("extractTokens", () => {
 		expect(extractTokens("bunx tsc --noEmit")).toEqual(["tsc", "--noEmit"]);
 	});
 
-	test("returns [] on empty / whitespace-only input", () => {
+	test("returns [] on empty / whitespace-only / wrapper-only input", () => {
 		expect(extractTokens("")).toEqual([]);
 		expect(extractTokens("   ")).toEqual([]);
-	});
-
-	test("returns [] when the command is just a wrapper with no program", () => {
 		expect(extractTokens("pnpm")).toEqual([]);
 	});
 

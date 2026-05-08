@@ -93,7 +93,7 @@ describe("parseTscOutput — ANSI handling", () => {
 	});
 });
 
-describe("parseTscOutput — pretty-mode passthrough", () => {
+describe("parseTscOutput — pretty-mode is unparsed (dispatcher passthrough)", () => {
 	test("returns [] when only --pretty diagnostics are present", () => {
 		const text = [
 			"src/foo.ts:34:7 - error TS2304: Cannot find name 'Bar'.",
